@@ -6,13 +6,244 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 enum HomeworkMode {
   LIVE // Kahoot-style: admin hosts a session, everyone answers together in real time
-  ASYNC // Homework-style: each student works through it on their own schedule
+  ASYNC // Legacy homework-style: anyone (no login) works through it on their own schedule
+  QUIZ // SkillArena: admin-owned, authenticated student, single timed+anti-cheat attempt
+}
+
+enum UserRole {
+  SUPER_ADMIN // Exactly one, ever - enforced by a partial unique index (see migration) and never assignable through the admin-creation UI
+  ADMIN
+  STUDENT
+}
+
+enum BugReportStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum QuizAttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum QuizAttemptEventType {
+  TAB_HIDDEN
+  WINDOW_BLUR
+  FAILED
+}
+
+enum IncoCategory {
+  PERSONAL
+  ACADEMIC
+  COMPLAINT
+  SUGGESTION
+  PROGRAM
+  LECTURER
+  ADMINISTRATION
+  STUDENT
+  OTHER
+}
+
+enum IncoStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+}
+
+// A real, persistent SkillArena account - admins and students. Distinct from
+// the legacy `Student` model below, which is a nameless, passwordless,
+// per-homework join used by LIVE (and legacy ASYNC) mode and is left as-is.
+model User {
+  id           String   @id @default(cuid())
+  firstName    String
+  lastName     String
+  username     String   @unique
+  passwordHash String
+  role         UserRole
+  createdAt    DateTime @default(now())
+
+  // Bumped every time this account's password changes (self-service or an
+  // admin-issued reset). The session envelope embeds the value that was
+  // current when a given session was issued - session.ts rejects any
+  // session whose embedded value no longer matches this column, which is
+  // what makes a password change sign the account out everywhere, not just
+  // in the browser that changed it, without needing a server-side session
+  // store for otherwise-stateless JWTs.
+  sessionVersion Int @default(0)
+
+  // Mandatory for STUDENT and ADMIN, always null for SUPER_ADMIN (who has
+  // access to every program instead of being scoped to one) - enforced by
+  // the raw-SQL CHECK constraint added in this column's migration, the same
+  // "hard DB-level guarantee on top of application logic" pattern already
+  // used for the single-Super-Admin partial unique index below. onDelete:
+  // Restrict because Program has no delete workflow in the first place, but
+  // this keeps that invariant true even if one is ever added carelessly.
+  programId String?
+  program   Program? @relation(fields: [programId], references: [id], onDelete: Restrict)
+
+  quizAttempts   QuizAttempt[]
+  ownedHomeworks Homework[]            @relation("HomeworkOwner")
+  subjectGroups  StudentSubjectGroup[]
+  bugReports     BugReport[]
+
+  @@index([programId])
+  @@map("users")
+}
+
+// Screenshot bytes live in a dedicated attachment row (metadata + bytes),
+// not inlined into the report itself - keeps BugReport cheap to list/query
+// while still using the project's existing Postgres/Prisma persistence
+// rather than adding a new storage dependency. Cloud Run's filesystem is
+// ephemeral and not shared across instances, so local disk was never a
+// viable option here; DB-backed bytes work identically in dev/Docker/Cloud Run.
+model BugReport {
+  id          String          @id @default(cuid())
+  studentId   String
+  student     User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  description String
+  status      BugReportStatus @default(OPEN)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  attachments BugReportAttachment[]
+
+  @@index([studentId])
+  @@index([status])
+  @@map("bug_reports")
+}
+
+model BugReportAttachment {
+  id          String    @id @default(cuid())
+  bugReportId String
+  bugReport   BugReport @relation(fields: [bugReportId], references: [id], onDelete: Cascade)
+
+  fileName    String
+  contentType String
+  fileSize    Int
+  data        Bytes
+
+  createdAt DateTime @default(now())
+
+  @@index([bugReportId])
+  @@map("bug_report_attachments")
+}
+
+// An educational program ("Front-end Development", "Networks", ...). Real,
+// persistent rows (not an enum) so the Super Admin can add new programs from
+// the website with no code change - the same design already used for
+// Subject below. Deliberately has no delete workflow (see Subject's own
+// comment) - only ever created, never removed, through the app.
+model Program {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  // How many fixed groups (I, II, III, ...) every subject in this program
+  // gets. Per-program, not a global constant - Front-end Development is 4,
+  // Networks is 3, and a newly created program can be given any count at
+  // creation time. Applied when a subject is created (see createSubject);
+  // changing it later does not retroactively add/remove groups on existing
+  // subjects, since there is intentionally no group add/remove workflow at
+  // all (see Group's own schema comment).
+  groupCount Int @default(3)
+
+  subjects Subject[]
+  users    User[]
+
+  @@map("programs")
+}
+
+// A curriculum subject (English, JavaScript, Git, ...), scoped to exactly
+// one Program - "Front-end Development" and "Networks" each have their own
+// independent "English" subject (see the compound unique below, which
+// replaces a plain global-unique name now that two programs can legitimately
+// share a subject name). Persistent rows, not a hardcoded enum/string, so
+// new subjects can be added from the DB without touching the quiz/student
+// code. Each subject owns its own set of groups - "Group I" in JavaScript
+// and "Group I" in Git are different Group rows.
+//
+// No delete workflow by design: a Subject can accumulate quizzes, student
+// assignments, and historical attempts that a delete would either orphan or
+// cascade-destroy. If a subject ever needs to stop being used, that calls
+// for an explicit, separately-designed archive/disable flag - not silently
+// wiring up Prisma's cascade delete.
+model Subject {
+  id        String   @id @default(cuid())
+  programId String
+  program   Program  @relation(fields: [programId], references: [id], onDelete: Restrict)
+  name      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  groups        Group[]
+  studentGroups StudentSubjectGroup[]
+  homeworks     Homework[]
+
+  @@unique([programId, name])
+  @@index([programId])
+  @@map("subjects")
+}
+
+model Group {
+  id        String  @id @default(cuid())
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  name      String
+  order     Int     @default(0)
+
+  studentMemberships StudentSubjectGroup[]
+  quizTargets        QuizTargetGroup[]
+
+  @@unique([subjectId, name])
+  @@index([subjectId])
+  @@map("groups")
+}
+
+// One row per (student, subject) - the @@unique is what enforces "a student
+// has exactly one group per subject, but can have different groups across
+// different subjects" at the database level, not just in application code.
+// groupId is nullable so a subject can be assigned to a student before a
+// group has been decided for them - the row still exists (the student sees
+// the subject and a "no group yet" message) but grants no quiz access until
+// a group is set.
+model StudentSubjectGroup {
+  id        String  @id @default(cuid())
+  studentId String
+  student   User    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  groupId   String?
+  group     Group?  @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, subjectId])
+  @@index([subjectId])
+  @@index([groupId])
+  @@map("student_subject_groups")
+}
+
+// Which groups (within the quiz's one subject) can see a QUIZ-mode homework.
+// A student sees the quiz iff their StudentSubjectGroup for Quiz.subjectId
+// has a groupId that appears here.
+model QuizTargetGroup {
+  id         String   @id @default(cuid())
+  homeworkId String
+  homework   Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  groupId    String
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([homeworkId, groupId])
+  @@index([groupId])
+  @@map("quiz_target_groups")
 }
 
 enum HomeworkStatus {
@@ -51,23 +282,39 @@ model Homework {
   // that predate this - those are only manageable by admin.
   creatorToken String?
 
-  // Live-session state (ignored for ASYNC homework)
-  livePhase           LivePhase? @default(LOBBY)
+  // Live-session state (ignored for ASYNC/QUIZ homework)
+  livePhase            LivePhase? @default(LOBBY)
   currentQuestionIndex Int?
+
+  // Set only for QUIZ-mode homeworks: the admin User who created it. Null
+  // for LIVE/ASYNC homeworks made through the old no-login creatorToken flow.
+  ownerUserId String?
+  ownerUser   User?   @relation("HomeworkOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  // QUIZ-mode subject/group targeting - nullable so LIVE/legacy ASYNC rows
+  // (and a brand-new draft quiz before the admin picks one) are unaffected.
+  // Application logic requires both a subject and at least one target group
+  // before a QUIZ-mode homework can be published (status -> OPEN).
+  subjectId String?
+  subject   Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  questions Question[]
-  students  Student[]
+  questions    Question[]
+  students     Student[]
+  quizAttempts QuizAttempt[]
+  targetGroups QuizTargetGroup[]
 
+  @@index([ownerUserId])
+  @@index([subjectId])
   @@map("homeworks")
 }
 
 model Question {
-  id         String       @id @default(cuid())
+  id         String   @id @default(cuid())
   homeworkId String
-  homework   Homework     @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  homework   Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
 
   order        Int
   type         QuestionType
@@ -75,8 +322,9 @@ model Question {
   points       Int          @default(1000)
   timeLimitSec Int          @default(20)
 
-  options Option[]
-  answers Answer[]
+  options        Option[]
+  answers        Answer[]
+  attemptAnswers AttemptAnswer[]
 
   @@index([homeworkId])
   @@map("questions")
@@ -91,7 +339,8 @@ model Option {
   isCorrect Boolean @default(false)
   order     Int
 
-  answers Answer[]
+  answers        Answer[]
+  attemptAnswers AttemptAnswer[]
 
   @@index([questionId])
   @@map("options")
@@ -139,4 +388,100 @@ model Answer {
   @@unique([studentId, questionId])
   @@index([questionId])
   @@map("answers")
+}
+
+// --- SkillArena quiz-attempt system (QUIZ-mode homeworks only) ---
+//
+// One QuizAttempt per (student, homework) - the @@unique below is the single
+// server-side guarantee that a student can never get a second attempt at the
+// same quiz, whether their first attempt was completed or failed.
+model QuizAttempt {
+  id         String   @id @default(cuid())
+  studentId  String
+  student    User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  homeworkId String
+  homework   Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+
+  status         QuizAttemptStatus @default(IN_PROGRESS)
+  score          Int               @default(0)
+  totalQuestions Int
+  tabSwitchCount Int               @default(0)
+  failureReason  String?
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  answers AttemptAnswer[]
+  events  QuizAttemptEvent[]
+
+  @@unique([studentId, homeworkId])
+  @@index([homeworkId])
+  @@map("quiz_attempts")
+}
+
+// One row per question the student has opened during their attempt, created
+// lazily the first time they view that question. `deadlineAt` is fixed at
+// creation (now + 100s) and never moves - revisiting the question later, or
+// refreshing the page, cannot grant a fresh 100 seconds because the deadline
+// is read from here, not from client-side elapsed time.
+model AttemptAnswer {
+  id         String      @id @default(cuid())
+  attemptId  String
+  attempt    QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  selectedOptionId String?
+  selectedOption   Option? @relation(fields: [selectedOptionId], references: [id])
+
+  // null until the attempt is finally submitted - correctness/points are
+  // computed server-side at submission time, not revealed mid-quiz.
+  isCorrect Boolean?
+
+  deadlineAt DateTime
+  answeredAt DateTime?
+
+  @@unique([attemptId, questionId])
+  @@index([questionId])
+  @@map("attempt_answers")
+}
+
+model QuizAttemptEvent {
+  id        String               @id @default(cuid())
+  attemptId String
+  attempt   QuizAttempt          @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  type      QuizAttemptEventType
+  at        DateTime             @default(now())
+
+  @@index([attemptId])
+  @@map("quiz_attempt_events")
+}
+
+// --- INCO: anonymous student feedback/messaging ---
+//
+// Deliberately has NO relation to User anywhere on this model - not to
+// Student, not to User, not even a nullable one. That is the entire
+// anonymity guarantee: there is no column to join through, so no query
+// against this table can ever be extended to reveal who submitted a given
+// message, not even by an admin with full database access. Only the
+// SHA-256 hash of the student's reference code is stored (`codeHash`) -
+// never the code itself - the same one-way-hash principle as password
+// storage, so a database read of this table can't hand out working codes
+// either. No IP address, user agent, or other request metadata is
+// captured anywhere in this feature.
+model IncoSubmission {
+  id       String       @id @default(cuid())
+  category IncoCategory
+  message  String
+  status   IncoStatus   @default(NEW)
+  response String?
+
+  codeHash String @unique
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  respondedAt DateTime?
+
+  @@index([status])
+  @@map("inco_submissions")
 }

@@ -22,7 +22,7 @@ export function Leaderboard({ entries }: { entries: LeaderboardEntry[] }) {
               {e.firstName} {e.lastName}
             </span>
             {e.pendingGrading > 0 && (
-              <span className="badge bg-zinc-800 text-zinc-300">
+              <span className="badge badge-neutral">
                 {e.pendingGrading} pending grading
               </span>
             )}

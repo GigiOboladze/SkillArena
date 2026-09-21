@@ -8,10 +8,9 @@ export function joinUrlForCode(joinCode: string): string {
 
 /**
  * Renders the join link as a scannable QR code (PNG data URL) for the admin
- * panel. Modules are the darker orange shade (not the brighter brand
- * orange) on a plain white background - orange-on-white still keeps
- * contrast high enough to scan reliably, which a fully orange-on-black
- * treatment would not.
+ * panel. Modules are the darker brand violet on a plain white background -
+ * violet-on-white still keeps contrast high enough to scan reliably, which
+ * a fully violet-on-black treatment would not.
  */
 export async function generateJoinQrDataUrl(joinCode: string): Promise<string> {
   const url = joinUrlForCode(joinCode);
@@ -19,7 +18,7 @@ export async function generateJoinQrDataUrl(joinCode: string): Promise<string> {
     margin: 2,
     width: 320,
     color: {
-      dark: "#EA580C",
+      dark: "#5B3DF0",
       light: "#FFFFFF",
     },
   });

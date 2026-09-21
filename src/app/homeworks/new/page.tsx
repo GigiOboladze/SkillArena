@@ -9,9 +9,9 @@ export default async function NewHomeworkPage({
   const hasError = params?.error === "title";
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-6 py-10">
+    <main className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-6 py-10">
       <Link href="/" className="mx-auto">
-        <Logo size={90} priority />
+        <Logo size={40} priority />
       </Link>
       <h1 className="mt-6 text-center text-2xl font-bold">New homework</h1>
       <p className="mt-1 text-center text-sm text-rahoot-muted">
@@ -60,6 +60,6 @@ export default async function NewHomeworkPage({
           Create homework
         </button>
       </form>
-    </div>
+    </main>
   );
 }

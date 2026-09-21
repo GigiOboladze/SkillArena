@@ -28,7 +28,7 @@ export default async function HomeworkLayout({
   if (!authorized) {
     return (
       <div className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-        <Logo size={96} />
+        <Logo size={40} />
         <h1 className="mt-4 text-xl font-bold">Not your homework to manage</h1>
         <p className="mt-2 text-sm text-rahoot-muted">
           This browser doesn&apos;t have creator access to &quot;{homework.title}&quot;. If you made
@@ -51,7 +51,7 @@ export default async function HomeworkLayout({
       <header className="border-b-4 border-rahoot-red bg-rahoot-surface">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <Link href={isAdmin ? "/admin" : "/my-homeworks"} className="flex items-center gap-2">
-            <Logo size={44} priority />
+            <Logo size={32} priority />
           </Link>
           <Link href={isAdmin ? "/admin" : "/my-homeworks"} className="btn btn-outline !py-2 !px-4 text-sm">
             {isAdmin ? "All homeworks" : "My homeworks"}

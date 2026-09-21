@@ -7,10 +7,10 @@ import "dotenv/config";
 import { chromium } from "playwright";
 
 const BASE = process.env.SMOKE_BASE_URL || "http://localhost:3000";
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-  throw new Error("ADMIN_EMAIL / ADMIN_PASSWORD must be set (via .env) to run the smoke test");
+if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+  throw new Error("ADMIN_USERNAME / ADMIN_PASSWORD must be set (via .env) to run the smoke test");
 }
 const results = [];
 function ok(name) { results.push({ name, pass: true }); console.log("PASS:", name); }
@@ -29,20 +29,20 @@ async function run() {
 
   // ---------- Admin login ----------
   await admin.goto(`${BASE}/admin/login`);
-  await admin.fill('input[name="email"]', ADMIN_EMAIL);
+  await admin.fill('input[name="username"]', ADMIN_USERNAME);
   await admin.fill('input[name="password"]', ADMIN_PASSWORD);
   await Promise.all([
     admin.waitForURL(`${BASE}/admin`),
     admin.click('button[type="submit"]'),
   ]);
-  await assert((await admin.textContent("h1")).includes("Homeworks"), "expected admin dashboard heading");
+  await assert((await admin.textContent("h1")).includes("Overview"), "expected admin dashboard heading");
   ok("admin login redirects to dashboard");
 
   // Wrong password should stay on login with error
   const wrongCtx = await browser.newContext();
   const wrongPage = await wrongCtx.newPage();
   await wrongPage.goto(`${BASE}/admin/login`);
-  await wrongPage.fill('input[name="email"]', ADMIN_EMAIL);
+  await wrongPage.fill('input[name="username"]', ADMIN_USERNAME);
   await wrongPage.fill('input[name="password"]', "wrong-password");
   await wrongPage.click('button[type="submit"]');
   await wrongPage.waitForURL(/error=invalid/);
@@ -112,16 +112,14 @@ async function run() {
   ]);
   ok("student joined async homework and landed on question 0");
 
-  // Answer Q0 correctly (option "4")
+  // Answer Q0 correctly (option "4") - tapping the answer tile auto-submits
+  // the enclosing form (see AsyncOptions.tsx), there's no separate radio +
+  // submit-button step for multiple choice.
   const q0Text = await s1.textContent("h1");
   await assert(q0Text.includes("2 + 2"), "expected question 0 text, got " + q0Text);
-  const optionLabels = await s1.locator("label.card").allTextContents();
-  const correctIdx = optionLabels.findIndex((t) => t.trim() === "4");
-  await assert(correctIdx >= 0, "could not find option '4'");
-  await s1.locator("label.card input[type=radio]").nth(correctIdx).check();
   await Promise.all([
     s1.waitForURL(new RegExp(`/play/${asyncHwId}/q/1$`)),
-    s1.click('button[type="submit"]'),
+    s1.getByRole("button", { name: "4", exact: true }).click(),
   ]);
   ok("student answered question 0 (multiple choice)");
 
@@ -212,12 +210,11 @@ async function run() {
   await hostPage.waitForSelector("text=Capital of France?", { timeout: 10000 });
   ok("both host and student see the live question");
 
-  const liveOptionLabels = await s2.locator("button.card").allTextContents();
-  const parisIdx = liveOptionLabels.findIndex((t) => t.includes("Paris"));
-  await assert(parisIdx >= 0, "expected Paris option on student screen");
-  await s2.locator("button.card").nth(parisIdx).click();
-  await s2.click('button:has-text("Submit answer")');
-  await s2.waitForSelector("text=Answer locked in", { timeout: 5000 });
+  // Multiple-choice tiles auto-submit on click (see LiveGame.tsx
+  // selectMultipleChoice) - there's no separate "Submit answer" button for
+  // this question type, only for the paragraph/free-text branch.
+  await s2.getByRole("button", { name: "Paris", exact: true }).click();
+  await s2.waitForSelector("text=Locked in - waiting for the others...", { timeout: 5000 });
   ok("student submitted live answer");
 
   await hostPage.waitForSelector("text=1/1 answered", { timeout: 10000 });

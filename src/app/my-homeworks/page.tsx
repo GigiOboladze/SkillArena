@@ -4,9 +4,9 @@ import { getMyCreatedHomeworkIds } from "@/lib/creator-session";
 import { Logo } from "@/components/Logo";
 
 const STATUS_STYLES: Record<string, string> = {
-  DRAFT: "bg-zinc-800 text-zinc-300",
-  OPEN: "bg-green-900 text-green-300",
-  CLOSED: "bg-zinc-800 text-zinc-500",
+  DRAFT: "badge-neutral",
+  OPEN: "badge-success",
+  CLOSED: "badge-neutral",
 };
 
 // No login here - this just looks up whatever homeworkIds this browser's
@@ -25,9 +25,9 @@ export default async function MyHomeworksPage() {
     : [];
 
   return (
-    <div className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
+    <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
       <Link href="/" className="inline-block">
-        <Logo size={64} priority />
+        <Logo size={36} priority />
       </Link>
       <div className="mt-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">My homeworks</h1>
@@ -69,6 +69,6 @@ export default async function MyHomeworksPage() {
           ))}
         </ul>
       )}
-    </div>
+    </main>
   );
 }

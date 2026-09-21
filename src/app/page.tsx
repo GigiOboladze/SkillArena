@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 // This page has no per-request data, so Next would otherwise mark it fully
 // static and send a year-long s-maxage - which Firebase Hosting's CDN then
@@ -11,40 +12,42 @@ export const dynamic = "force-dynamic";
 
 export default function Home() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center border-t-4 border-rahoot-red bg-background px-6 py-16 text-rahoot-ink">
+    <main className="flex flex-1 flex-col items-center justify-center bg-background px-6 py-16 text-rahoot-ink">
+      <div className="fixed right-4 top-4">
+        <ThemeToggle />
+      </div>
       <div className="w-full max-w-lg text-center">
-        <h1 className="sr-only">Rahoot</h1>
-        <Logo size={220} priority />
+        <Logo size={48} priority className="mx-auto" />
         <p className="mt-5 text-lg text-rahoot-muted">
-          Playing a quiz someone shared, or building your own? No account needed either way.
+          Self-paced quizzes after every lecture, one attempt each, a cumulative leaderboard for the whole course.
         </p>
 
         <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Link href="/join" className="card flex flex-col p-6 text-center hover:border-rahoot-red">
-            <h2 className="text-lg font-bold">Enter join code</h2>
+          <Link href="/login" className="card flex flex-col p-6 text-center hover:border-rahoot-red">
+            <h2 className="text-lg font-bold">Student login</h2>
             <p className="mt-1 flex-1 text-sm text-rahoot-muted">
-              Got a code or a QR code from your teacher? Jump straight in.
+              Log in with the account your instructor set up for you.
             </p>
-            <span className="btn btn-primary mt-4">Enter join code</span>
+            <span className="btn btn-primary mt-4">Log in</span>
           </Link>
-          <Link href="/homeworks/new" className="card flex flex-col p-6 text-center hover:border-rahoot-red">
-            <h2 className="text-lg font-bold">Create homework</h2>
+          <Link href="/admin/login" className="card flex flex-col p-6 text-center hover:border-rahoot-red">
+            <h2 className="text-lg font-bold">Admin login</h2>
             <p className="mt-1 flex-1 text-sm text-rahoot-muted">
-              Name it, add questions, get a join code - nothing to sign up for.
+              Create quizzes, manage students, and review results.
             </p>
-            <span className="btn btn-outline mt-4">Create homework</span>
+            <span className="btn btn-outline mt-4">Log in</span>
           </Link>
         </div>
       </div>
 
       <div className="mt-16 flex items-center gap-6 text-sm text-rahoot-muted">
-        <Link href="/my-homeworks" className="hover:text-rahoot-ink hover:underline">
-          My homeworks
+        <Link href="/join" className="hover:text-rahoot-ink hover:underline">
+          Join a live session
         </Link>
-        <Link href="/admin/login" className="hover:text-rahoot-ink hover:underline">
-          Admin login
+        <Link href="/homeworks/new" className="hover:text-rahoot-ink hover:underline">
+          Host a live session
         </Link>
       </div>
-    </div>
+    </main>
   );
 }

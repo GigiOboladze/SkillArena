@@ -31,10 +31,19 @@ function getSecretKey() {
   return new TextEncoder().encode(secret);
 }
 
-export type AdminSessionPayload = { email: string };
+export type AdminSessionPayload = { userId: string; username: string };
+// A real, persistent SkillArena student account (User row, role=STUDENT) -
+// distinct from the legacy anonymous per-homework `students` map below,
+// which is unrelated and kept as-is for LIVE mode / legacy self-paced joins.
+export type StudentUserSessionPayload = { userId: string; username: string };
+// Both session payload types above also carry `sv` (sessionVersion) once
+// signed - kept out of the plain type since most callers only care about
+// userId/username; session.ts reads it directly off the envelope entry to
+// compare against the User row's current value (see User.sessionVersion).
 export type StudentSessionEntry = { studentId: string; clientToken: string };
 export type SessionEnvelope = {
-  admin?: AdminSessionPayload & { exp: number };
+  admin?: AdminSessionPayload & { exp: number; sv: number };
+  studentUser?: StudentUserSessionPayload & { exp: number; sv: number };
   // Keyed by homeworkId - a student can be mid-way through several
   // different homeworks at once, each needing its own entry.
   students?: Record<string, StudentSessionEntry>;
@@ -72,14 +81,41 @@ export async function verifySessionEnvelope(token: string): Promise<SessionEnvel
   }
 }
 
-export function newAdminEntry(email: string): NonNullable<SessionEnvelope["admin"]> {
-  return { email, exp: Math.floor(Date.now() / 1000) + ADMIN_TTL_SECONDS };
+export function newAdminEntry(
+  userId: string,
+  username: string,
+  sessionVersion: number
+): NonNullable<SessionEnvelope["admin"]> {
+  return { userId, username, sv: sessionVersion, exp: Math.floor(Date.now() / 1000) + ADMIN_TTL_SECONDS };
 }
 
-export function adminFromEnvelope(envelope: SessionEnvelope): AdminSessionPayload | null {
+export function adminFromEnvelope(envelope: SessionEnvelope): (AdminSessionPayload & { sv: number }) | null {
   const admin = envelope.admin;
   if (!admin || admin.exp <= Math.floor(Date.now() / 1000)) return null;
-  return { email: admin.email };
+  // `sv` defaults to 0 for a session signed before session-versioning
+  // shipped - matches User.sessionVersion's own default, so a pre-existing
+  // session stays valid rather than being force-logged-out by this deploy.
+  return { userId: admin.userId, username: admin.username, sv: admin.sv ?? 0 };
+}
+
+// Same TTL/shape pattern as the admin sub-session, for a logged-in student's
+// own SkillArena account (not the legacy anonymous per-homework join above).
+const STUDENT_USER_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days - students stay logged in across a course
+
+export function newStudentUserEntry(
+  userId: string,
+  username: string,
+  sessionVersion: number
+): NonNullable<SessionEnvelope["studentUser"]> {
+  return { userId, username, sv: sessionVersion, exp: Math.floor(Date.now() / 1000) + STUDENT_USER_TTL_SECONDS };
+}
+
+export function studentUserFromEnvelope(
+  envelope: SessionEnvelope
+): (StudentUserSessionPayload & { sv: number }) | null {
+  const su = envelope.studentUser;
+  if (!su || su.exp <= Math.floor(Date.now() / 1000)) return null;
+  return { userId: su.userId, username: su.username, sv: su.sv ?? 0 };
 }
 
 /** Merges `value` into `map` under `key`, evicting the oldest entry first if that would push the count over `max`. Object key insertion order is preserved for string keys, so the first remaining key is the oldest. */
@@ -125,16 +161,4 @@ export function adminSessionCookieName() {
 
 export async function verifyAdminToken(token: string): Promise<AdminSessionPayload | null> {
   return adminFromEnvelope(await verifySessionEnvelope(token));
-}
-
-export function verifyAdminCredentials(email: string, password: string) {
-  const validEmail = process.env.ADMIN_EMAIL;
-  const validPassword = process.env.ADMIN_PASSWORD;
-  if (!validEmail || !validPassword) {
-    throw new Error("ADMIN_EMAIL / ADMIN_PASSWORD are not configured");
-  }
-  return (
-    email.trim().toLowerCase() === validEmail.trim().toLowerCase() &&
-    password === validPassword
-  );
 }

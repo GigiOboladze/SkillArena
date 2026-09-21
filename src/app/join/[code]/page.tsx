@@ -57,7 +57,7 @@ export default async function JoinCodePage({
   const joinAction = joinHomework.bind(null, homework.id);
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
+    <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
       <div className="w-full max-w-sm text-center">
         <p className="text-sm font-bold uppercase tracking-wide text-rahoot-red">
           Joining
@@ -84,18 +84,18 @@ export default async function JoinCodePage({
           </button>
         </form>
       </div>
-    </div>
+    </main>
   );
 }
 
 function StatusScreen({ title, message }: { title: string; message: string }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+    <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
       <h1 className="text-2xl font-bold">{title}</h1>
       <p className="mt-2 max-w-sm text-rahoot-muted">{message}</p>
       <Link href="/join" className="btn btn-outline mt-6">
         Try another code
       </Link>
-    </div>
+    </main>
   );
 }

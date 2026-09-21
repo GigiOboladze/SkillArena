@@ -194,8 +194,8 @@ export function HostClient({
                     key={optionId}
                     className={`mb-2 flex items-center gap-3 rounded-lg border-2 p-2 text-sm font-semibold ${
                       isCorrect
-                        ? "border-rahoot-red bg-rahoot-red text-[#1a1005]"
-                        : "border-rahoot-red bg-black text-rahoot-red"
+                        ? "border-rahoot-red bg-rahoot-red text-[color:var(--on-primary)]"
+                        : "border-rahoot-red bg-rahoot-surface text-rahoot-red"
                     }`}
                   >
                     <span>

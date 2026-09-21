@@ -1,21 +1,92 @@
 @import "tailwindcss";
 
+/*
+ * Theme system: dark is the default/unqualified :root (SkillArena's primary
+ * identity, unchanged from before) and light is an explicit override block
+ * activated by [data-theme="light"] on <html> - so a first paint with no
+ * stored preference (or JS disabled) renders dark, never a flash of the
+ * wrong scheme. See ThemeToggle/ThemeScript for how data-theme gets set.
+ *
+ * Dark accent: violet-to-blue from the SkillArena mark.
+ * Light accent: this project's own pre-SkillArena palette (#f97316 /
+ * #ea580c) - the one concrete "classic red" reference in this codebase's
+ * history (its own comment: "matches the owl logo"), reused rather than
+ * inventing a new red. Token names kept as "rahoot-red" etc. since they're
+ * used as utility classes everywhere (bg-rahoot-red, text-rahoot-red...) -
+ * only the values change per theme.
+ */
 :root {
-  --background: #0b0b0d;
-  --foreground: #fdf6ec;
+  --background: #09090f;
+  --foreground: #f4f3fa;
 
-  /* Rahoot brand palette: matches the owl logo - black, warm orange, cream.
-     Token names kept as "rahoot-red" etc. since they're used as utility
-     classes everywhere (bg-rahoot-red, text-rahoot-red...) - only the
-     values changed, from the old red/white scheme to this one. */
-  --rahoot-red: #f97316;
-  --rahoot-red-dark: #ea580c;
-  --rahoot-red-light: rgba(249, 115, 22, 0.16);
-  --rahoot-white: #fdf6ec;
-  --rahoot-ink: #fdf6ec;
-  --rahoot-muted: #a1a1aa;
-  --rahoot-border: #2a2a2e;
-  --rahoot-surface: #18181b;
+  --rahoot-red: #7c5cff;
+  --rahoot-red-dark: #5b3df0;
+  --rahoot-red-light: rgba(124, 92, 255, 0.16);
+  --rahoot-red-glow: rgba(124, 92, 255, 0.35);
+  --rahoot-white: #f4f3fa;
+  --rahoot-ink: #f4f3fa;
+  --rahoot-muted: #9797ab;
+  --rahoot-border: #26263a;
+  --rahoot-surface: #131320;
+  --on-primary: #fbfaff; /* text/icon color placed ON a --rahoot-red surface (buttons, selected tiles) */
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --card-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.35);
+
+  /* Secondary accent - swaps role with the primary between themes so
+     competitive/gamified highlights (medals, streaks) stay visually
+     distinct from ordinary buttons/links rather than just repeating them. */
+  --skillarena-accent: #f97316;
+  --skillarena-accent-light: rgba(249, 115, 22, 0.16);
+
+  /* Status badges (published/draft, completed/failed) use a fixed
+     success/danger/neutral hue independent of the brand accent, so
+     "failed" reads as red regardless of which color the theme's primary
+     currently is. */
+  --badge-success-bg: rgba(34, 197, 94, 0.18);
+  --badge-success-text: #4ade80;
+  --badge-danger-bg: rgba(248, 113, 113, 0.18);
+  --badge-danger-text: #f87171;
+  --badge-neutral-bg: rgba(255, 255, 255, 0.08);
+  --badge-neutral-text: var(--rahoot-muted);
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  /* Clean light-dashboard palette: light-gray page ground, white cards,
+     dark navy text, purple/violet primary - matches the SkillArena mark's
+     own violet rather than inventing a new brand color. Dark mode above is
+     untouched; this block only. */
+  --background: #f6f6fb;
+  --foreground: #171833;
+
+  --rahoot-red: #7c5cff;
+  --rahoot-red-dark: #5b3df0;
+  --rahoot-red-light: rgba(124, 92, 255, 0.1);
+  --rahoot-red-glow: rgba(124, 92, 255, 0.25);
+  --rahoot-white: #171833;
+  --rahoot-ink: #171833;
+  --rahoot-muted: #64647d;
+  --rahoot-border: #e5e5f0;
+  --rahoot-surface: #ffffff;
+  --on-primary: #fbfaff;
+  --card-shadow: 0 1px 2px rgba(23, 24, 51, 0.05);
+  --card-shadow-hover: 0 10px 28px rgba(23, 24, 51, 0.1);
+
+  /* Secondary/gamified accent (medals, streaks) keeps the pre-SkillArena
+     warm orange, now in the accent role instead of primary - still visually
+     distinct from the purple primary buttons/nav, just swapped in role. */
+  --skillarena-accent: #f97316;
+  --skillarena-accent-light: rgba(249, 115, 22, 0.12);
+
+  --badge-success-bg: rgba(22, 163, 74, 0.12);
+  --badge-success-text: #15803d;
+  --badge-danger-bg: rgba(220, 38, 38, 0.1);
+  --badge-danger-text: #b91c1c;
+  --badge-neutral-bg: rgba(23, 24, 51, 0.05);
+  --badge-neutral-text: var(--rahoot-muted);
+
+  color-scheme: light;
 }
 
 @theme inline {
@@ -29,6 +100,8 @@
   --color-rahoot-muted: var(--rahoot-muted);
   --color-rahoot-border: var(--rahoot-border);
   --color-rahoot-surface: var(--rahoot-surface);
+  --color-skillarena-accent: var(--skillarena-accent);
+  --color-skillarena-accent-light: var(--skillarena-accent-light);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -37,7 +110,11 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
-  color-scheme: dark;
+  /* Was hardcoded to dark regardless of theme - meant native form controls
+     (checkboxes, select arrows, scrollbars) kept rendering with dark chrome
+     even on the light background. :root already tracks the real theme via
+     color-scheme (see both blocks above); inherit that here instead. */
+  color-scheme: inherit;
 }
 
 /* Reusable building blocks so pages don't repeat the same long class strings */
@@ -49,7 +126,7 @@ body {
   border-radius: 0.75rem;
   font-weight: 700;
   padding: 0.75rem 1.5rem;
-  transition: transform 0.1s ease, background-color 0.15s ease;
+  transition: transform 0.1s ease, background-color 0.15s ease, box-shadow 0.15s ease;
   cursor: pointer;
   border: 2px solid transparent;
 }
@@ -58,10 +135,12 @@ body {
 }
 .btn-primary {
   background: var(--rahoot-red);
-  color: #1a1005;
+  color: var(--on-primary);
+  box-shadow: 0 0 0 transparent;
 }
 .btn-primary:hover {
   background: var(--rahoot-red-dark);
+  box-shadow: 0 4px 20px var(--rahoot-red-glow);
 }
 .btn-outline {
   background: var(--rahoot-surface);
@@ -75,13 +154,45 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
 }
 
 .card {
   background: var(--rahoot-surface);
   border: 1px solid var(--rahoot-border);
   border-radius: 1rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--card-shadow);
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+a.card:hover,
+.card.card-interactive:hover {
+  border-color: var(--rahoot-red);
+  transform: translateY(-2px);
+  box-shadow: var(--card-shadow-hover);
+}
+
+/* Smooth page entrance - restrained, not a slide/bounce, and skipped entirely for reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  main {
+    animation: page-enter 0.25s ease-out;
+  }
+}
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 .input {
@@ -102,6 +213,48 @@ body {
 /* Question form: hide the multiple-choice options block when "Paragraph" is selected - no JS needed */
 .question-form:has(input[name="type"][value="PARAGRAPH"]:checked) [data-mc-only] {
   display: none;
+}
+
+/* Compact group-selection pill: a real radio <input>, visually hidden but
+   still focusable/keyboard-operable, with :has() driving the checked look -
+   same no-JS-needed approach as .question-form above. */
+.group-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 2px solid var(--rahoot-border);
+  background: var(--rahoot-surface);
+  color: var(--rahoot-muted);
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+.group-pill input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.group-pill:hover {
+  border-color: var(--rahoot-red);
+  color: var(--rahoot-ink);
+}
+.group-pill:has(input:checked) {
+  border-color: var(--rahoot-red);
+  background: var(--rahoot-red);
+  color: var(--on-primary);
+}
+.group-pill:has(input:focus-visible) {
+  outline: 2px solid var(--rahoot-red);
+  outline-offset: 2px;
+}
+.group-pill:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Answer tile "pop" when picked - a quick bouncy scale-up rather than a
@@ -133,4 +286,74 @@ body {
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+}
+.badge-success {
+  background: var(--badge-success-bg);
+  color: var(--badge-success-text);
+}
+.badge-danger {
+  background: var(--badge-danger-bg);
+  color: var(--badge-danger-text);
+}
+.badge-neutral {
+  background: var(--badge-neutral-bg);
+  color: var(--badge-neutral-text);
+}
+.badge-warning {
+  background: var(--skillarena-accent-light);
+  color: var(--skillarena-accent);
+}
+
+/* Animated sun/moon theme toggle - a cross-fade + slide + rotate between
+   the two icons, driven purely by data-state so no JS animation loop is
+   needed. Kept short and restrained per the "subtle, not distracting"
+   direction; fully disabled under prefers-reduced-motion. */
+.theme-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 2px solid var(--rahoot-border);
+  background: var(--rahoot-surface);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.theme-toggle:hover {
+  border-color: var(--rahoot-red);
+}
+.theme-toggle:disabled {
+  opacity: 0;
+}
+.theme-toggle svg {
+  position: absolute;
+  width: 1.2rem;
+  height: 1.2rem;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease;
+}
+.theme-toggle .icon-sun {
+  color: var(--skillarena-accent);
+}
+.theme-toggle .icon-moon {
+  color: var(--rahoot-red);
+}
+.theme-toggle[data-state="dark"] .icon-sun {
+  opacity: 0;
+  transform: translateY(130%) rotate(-90deg);
+}
+.theme-toggle[data-state="dark"] .icon-moon {
+  opacity: 1;
+  transform: translateY(0) rotate(0deg);
+}
+.theme-toggle[data-state="light"] .icon-sun {
+  opacity: 1;
+  transform: translateY(0) rotate(0deg);
+}
+.theme-toggle[data-state="light"] .icon-moon {
+  opacity: 0;
+  transform: translateY(-130%) rotate(90deg);
 }

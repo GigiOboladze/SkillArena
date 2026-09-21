@@ -5,8 +5,8 @@ import type { ReactNode } from "react";
 export type OptionState = "idle" | "selected" | "dimmed";
 
 /**
- * One answer tile: black surface with an orange outline while choosing,
- * turning fully solid orange (with a bouncy pop animation) the instant
+ * One answer tile: black surface with a violet outline while choosing,
+ * turning fully solid violet (with a bouncy pop animation) the instant
  * it's picked - `state` drives it. "selected" stays applied through
  * submission and the wait for others, so the choice keeps reading clearly
  * rather than being replaced by a plain text message. "dimmed" fades every
@@ -34,8 +34,8 @@ export function OptionTile({
       aria-pressed={state === "selected"}
       className={`relative flex min-h-16 items-center justify-center rounded-2xl border-2 p-4 text-center font-bold transition-all duration-150 ease-out sm:min-h-20 ${
         state === "selected"
-          ? "border-rahoot-red bg-rahoot-red text-[#1a1005] shadow-lg"
-          : "border-rahoot-red bg-black text-rahoot-red"
+          ? "border-rahoot-red bg-rahoot-red text-[#fbfaff] shadow-lg"
+          : "border-rahoot-red bg-rahoot-surface text-rahoot-red"
       } ${interactive ? "cursor-pointer hover:bg-rahoot-red-light active:scale-95" : "cursor-default"} ${
         state === "dimmed" ? "opacity-30" : ""
       } ${state === "selected" ? "tile-pop" : ""} ${className}`}
