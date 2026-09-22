@@ -52,9 +52,14 @@ async function seedAdmin() {
     return;
   }
 
-  const existing = await prisma.user.findUnique({ where: { username } });
+  // Check by role, not just by username: exactly one SUPER_ADMIN can ever
+  // exist (see the partial unique index), so if one already exists under a
+  // different username than ADMIN_USERNAME (e.g. renamed via /admin/profile),
+  // we must still skip - attempting create() here would hit that constraint
+  // and fail the whole seed/deploy, not just silently no-op.
+  const existing = await prisma.user.findFirst({ where: { OR: [{ username }, { role: "SUPER_ADMIN" }] } });
   if (existing) {
-    console.log(`Admin "${username}" already exists - nothing to do.`);
+    console.log(`Super Admin already exists as "${existing.username}" - nothing to do.`);
     return;
   }
 
