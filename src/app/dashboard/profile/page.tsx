@@ -17,7 +17,8 @@ export default async function StudentProfilePage({
   if (!student) redirect("/login");
 
   const search = await searchParams;
-  const error = typeof search?.error === "string" ? ERROR_MESSAGES[search.error] ?? null : null;
+  const errorKey = typeof search?.error === "string" ? search.error : null;
+  const error = errorKey ? ERROR_MESSAGES[errorKey] ?? null : null;
   const updated = search?.updated;
 
   const [program, attempts, subjectGroups] = await Promise.all([
@@ -104,7 +105,7 @@ export default async function StudentProfilePage({
             />
           </label>
           {updated === "username" && <p className="text-sm font-medium text-green-400">Username updated.</p>}
-          {error && (search?.error === "username" || search?.error === "taken") && (
+          {error && (errorKey === "username" || errorKey === "taken") && (
             <p className="text-sm font-medium text-rahoot-red">{error}</p>
           )}
           <button type="submit" className="btn btn-outline self-start">
@@ -127,7 +128,7 @@ export default async function StudentProfilePage({
             Confirm new password
             <input type="password" name="confirmPassword" required minLength={8} className="input mt-1" />
           </label>
-          {error && (error === "weak" || error === "mismatch") && (
+          {error && (errorKey === "weak" || errorKey === "mismatch") && (
             <p className="text-sm font-medium text-rahoot-red">{error}</p>
           )}
           <button type="submit" className="btn btn-primary self-start">
