@@ -25,6 +25,20 @@ const dev = process.env.NODE_ENV !== "production";
 // assume the default port 3000 regardless of what this server actually
 // listens on, which silently breaks redirects (like the admin login
 // action's) whenever PORT is set to anything else - as it is on Cloud Run.
+//
+// On Railway (unlike Cloud Run), that self-fetch derives its origin from
+// the request's forwarded headers, producing an https:// URL - but Railway
+// terminates TLS at its edge and forwards plain HTTP to this container, so
+// that self-fetch tries a TLS handshake against a port that only speaks
+// HTTP and fails with ERR_SSL_WRONG_VERSION_NUMBER. That failure isn't
+// always caught gracefully - server actions that end in redirect() (like
+// saving a quiz's target groups) can come back as a 503 instead of
+// completing. __NEXT_PRIVATE_ORIGIN is Next's own escape hatch for this
+// exact case: when set, action-handler.js uses it directly instead of
+// deriving the origin from the request, so the self-fetch correctly stays
+// on plain HTTP to this same process instead of round-tripping through a
+// protocol it doesn't speak internally.
+process.env.__NEXT_PRIVATE_ORIGIN = `http://127.0.0.1:${port}`;
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
