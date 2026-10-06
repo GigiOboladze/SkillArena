@@ -37,12 +37,24 @@ async function run() {
   // ---------- A regular (non-super) admin must be blocked, server-side ----------
   const regularUsername = `e2e-inco-admin-${RUN_ID}`;
   await superAdmin.goto(`${BASE}/admin/admins`, { waitUntil: "networkidle" });
-  await main(superAdmin).locator('input[name="username"]').fill(regularUsername);
-  await main(superAdmin).locator('input[name="password"]').fill("adminpass123");
-  await main(superAdmin).locator('input[name="confirmPassword"]').fill("adminpass123");
+  // Scoped to the "Create admin" section: once any regular admin already
+  // exists, the page also renders a per-row program-change select
+  // (AdminProgramForm), which collides with an unscoped locator.
+  const createAdminSection = superAdmin.locator('section:has-text("Create admin")');
+  await createAdminSection.locator('input[name="username"]').fill(regularUsername);
+  await createAdminSection.locator('input[name="password"]').fill("adminpass123");
+  await createAdminSection.locator('input[name="confirmPassword"]').fill("adminpass123");
+  // The program select has no default value (its first option is a
+  // disabled placeholder) - required, so it must be chosen explicitly or
+  // the browser blocks submission entirely.
+  const incoFirstProgramValue = await createAdminSection
+    .locator('select[name="programId"] option:not([value=""])')
+    .first()
+    .getAttribute("value");
+  await createAdminSection.locator('select[name="programId"]').selectOption(incoFirstProgramValue);
   await Promise.all([
     superAdmin.waitForURL((u) => u.searchParams.get("created") === "1"),
-    main(superAdmin).getByRole("button", { name: "Create admin" }).click(),
+    createAdminSection.getByRole("button", { name: "Create admin" }).click(),
   ]);
   ok("created a throwaway regular admin");
 
@@ -65,7 +77,8 @@ async function run() {
   // Clean up the throwaway admin so repeat runs don't pile up admin slots (max 8).
   await superAdmin.goto(`${BASE}/admin/admins`, { waitUntil: "networkidle" });
   const adminRow = main(superAdmin).locator("li", { hasText: regularUsername });
-  await adminRow.getByRole("button", { name: "Delete" }).click();
+  superAdmin.once("dialog", (d) => d.accept());
+  await adminRow.getByRole("button", { name: "Remove" }).click();
   await superAdmin.waitForLoadState("networkidle");
   ok("cleaned up the throwaway regular admin");
 
@@ -151,8 +164,14 @@ run()
     console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
     if (failed.length) process.exitCode = 1;
   })
-  .catch((err) => {
+  .catch(async (err) => {
     fail("inco e2e crashed", err.message || err);
     console.log(`\n${results.filter((r) => r.pass).length}/${results.length} checks passed`);
     process.exitCode = 1;
+  })
+  .finally(async () => {
+    // A crash partway through run() otherwise leaves the browser open
+    // forever (nothing past the throw point ever calls browser.close()),
+    // hanging this process indefinitely instead of exiting on failure.
+    try { await browser.close(); } catch {}
   });

@@ -27,6 +27,9 @@ export default async function DashboardLayout({
             <Link href="/dashboard" className="hover:text-rahoot-red">
               Dashboard
             </Link>
+            <Link href="/dashboard/hootarena" className="hover:text-rahoot-red">
+              HootArena
+            </Link>
             <Link href="/dashboard/leaderboard" className="hover:text-rahoot-red">
               Leaderboard
             </Link>

@@ -94,6 +94,8 @@ model User {
   ownedHomeworks Homework[]            @relation("HomeworkOwner")
   subjectGroups  StudentSubjectGroup[]
   bugReports     BugReport[]
+  hootGamesHosted HootGame[]   @relation("HootGameHost")
+  hootPlayers     HootPlayer[]
 
   @@index([programId])
   @@map("users")
@@ -188,6 +190,7 @@ model Subject {
   groups        Group[]
   studentGroups StudentSubjectGroup[]
   homeworks     Homework[]
+  hootGames     HootGame[]
 
   @@unique([programId, name])
   @@index([programId])
@@ -203,6 +206,7 @@ model Group {
 
   studentMemberships StudentSubjectGroup[]
   quizTargets        QuizTargetGroup[]
+  hootTargets        HootTargetGroup[]
 
   @@unique([subjectId, name])
   @@index([subjectId])
@@ -484,4 +488,161 @@ model IncoSubmission {
 
   @@index([status])
   @@map("inco_submissions")
+}
+
+// --- HootArena: live Kahoot-style multiplayer game, fully separate from the
+// ordinary QUIZ system above. Authenticated SkillArena Users join by 6-digit
+// PIN (no nickname, no anonymous Student rows) - identity, program and group
+// eligibility all come from the User's own account, checked server-side.
+// Deliberately reuses Program/Subject/Group/User rather than inventing
+// parallel concepts; a game is scoped to one Subject (so its target groups
+// are real per-subject Group rows, exactly like QuizTargetGroup) and thus
+// transitively to that subject's Program.
+
+enum HootGameStatus {
+  LOBBY // waiting for host to start; players may join
+  QUESTION // current question live, server-authoritative clock running
+  REVEAL // correct answer + per-question results being shown
+  LEADERBOARD // top-3 (students) / full board (host) shown between questions
+  FINISHED // game over, no longer joinable
+}
+
+enum HootQuestionType {
+  SINGLE_CHOICE // exactly one correct option
+  MULTIPLE_CHOICE // one or more correct options; all-or-nothing scoring
+  TRUE_FALSE // exactly two options (True/False), one correct
+}
+
+// Fixed 20-second-per-question live game. One row per game; PIN is the
+// student-facing join code, globally unique and never reused while any row
+// referencing it could still be relevant to a "PIN already used" error
+// message - rows are kept (not deleted) after FINISHED since #21 only rules
+// out building history *UI*, not keeping the row that the live game itself
+// depends on while it's winding down.
+model HootGame {
+  id     String @id @default(cuid())
+  pin    String @unique
+  title  String
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  hostId String
+  host   User   @relation("HootGameHost", fields: [hostId], references: [id], onDelete: Restrict)
+
+  status               HootGameStatus @default(LOBBY)
+  currentQuestionIndex Int            @default(-1)
+
+  createdAt  DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  targetGroups HootTargetGroup[]
+  questions    HootQuestion[]
+  players      HootPlayer[]
+  responses    HootResponse[]
+
+  @@index([subjectId])
+  @@index([hostId])
+  @@index([status])
+  @@map("hoot_games")
+}
+
+// Which groups (within the game's one subject) may join - same shape/intent
+// as QuizTargetGroup. Empty = nobody can join yet (admin must pick at least
+// one group before launching).
+model HootTargetGroup {
+  id     String   @id @default(cuid())
+  gameId String
+  game   HootGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  groupId String
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, groupId])
+  @@index([groupId])
+  @@map("hoot_target_groups")
+}
+
+model HootQuestion {
+  id     String @id @default(cuid())
+  gameId String
+  game   HootGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  order Int
+  type  HootQuestionType
+  text  String
+
+  options   HootOption[]
+  responses HootResponse[]
+
+  @@unique([gameId, order])
+  @@index([gameId])
+  @@map("hoot_questions")
+}
+
+model HootOption {
+  id         String       @id @default(cuid())
+  questionId String
+  question   HootQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  text      String
+  isCorrect Boolean @default(false)
+  order     Int
+
+  @@index([questionId])
+  @@map("hoot_options")
+}
+
+// One row per (game, user) - the @@unique is what makes rejoin/reconnect
+// idempotent (upsert onto the same row, same score) instead of ever creating
+// a duplicate player or resetting progress. `connected` is soft presence
+// state for the host's live player count, not a hard gate on anything.
+model HootPlayer {
+  id     String   @id @default(cuid())
+  gameId String
+  game   HootGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  score     Int     @default(0)
+  connected Boolean @default(true)
+  joinedAt  DateTime @default(now())
+
+  responses HootResponse[]
+
+  @@unique([gameId, userId])
+  @@index([gameId])
+  @@map("hoot_players")
+}
+
+// One row per (player, question) - the @@unique is the server-side guarantee
+// that a player can never submit twice for the same question (defense in
+// depth alongside the in-memory per-round "already answered" check in
+// server.ts, which is what actually rejects the second attempt fast; this
+// constraint is what makes that guarantee hold even across a server
+// restart/race). selectedOptionIds holds 1 id for SINGLE_CHOICE/TRUE_FALSE,
+// 1+ for MULTIPLE_CHOICE.
+model HootResponse {
+  id     String   @id @default(cuid())
+  gameId String
+  game   HootGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  questionId String
+  question   HootQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  playerId String
+  player   HootPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  selectedOptionIds String[]
+  isCorrect         Boolean
+  pointsAwarded     Int      @default(0)
+
+  answeredAt DateTime @default(now())
+
+  @@unique([playerId, questionId])
+  @@index([questionId])
+  @@index([gameId])
+  @@map("hoot_responses")
 }

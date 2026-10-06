@@ -40,6 +40,9 @@ export default async function AdminDashboardLayout({
             <Link href="/admin/quizzes" className="hover:text-rahoot-red">
               Quizzes
             </Link>
+            <Link href="/admin/hootarena" className="hover:text-rahoot-red">
+              HootArena
+            </Link>
             <Link href="/admin/students" className="hover:text-rahoot-red">
               Students
             </Link>

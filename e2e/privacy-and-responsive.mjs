@@ -152,4 +152,9 @@ run()
     fail("extra checks crashed", err.message || err);
     console.log(`\n${results.filter((r) => r.pass).length}/${results.length} checks passed`);
     process.exitCode = 1;
+  })
+  .finally(async () => {
+    // A crash partway through run() otherwise leaves the browser open
+    // forever, hanging this process instead of exiting on failure.
+    try { await browser.close(); } catch {}
   });

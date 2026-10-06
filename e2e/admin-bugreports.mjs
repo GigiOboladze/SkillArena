@@ -52,12 +52,22 @@ async function studentLogin(username, password) {
 
 async function createAdminViaUI(superAdminPage, username, password) {
   await superAdminPage.goto(`${BASE}/admin/admins`, { waitUntil: "networkidle" });
-  await main(superAdminPage).locator('input[name="username"]').fill(username);
-  await main(superAdminPage).locator('input[name="password"]').fill(password);
-  await main(superAdminPage).locator('input[name="confirmPassword"]').fill(password);
+  // Scoped to the "Create admin" section specifically: once any regular
+  // admin already exists, the page also renders a per-row program-change
+  // select (AdminProgramForm), which collides with an unscoped
+  // select[name="programId"] locator.
+  const createSection = superAdminPage.locator('section:has-text("Create admin")');
+  await createSection.locator('input[name="username"]').fill(username);
+  await createSection.locator('input[name="password"]').fill(password);
+  await createSection.locator('input[name="confirmPassword"]').fill(password);
+  // The program select has no default value (its first option is a
+  // disabled placeholder) - it's a required field, so it must be chosen
+  // explicitly or the browser blocks submission entirely.
+  const firstProgramOption = await createSection.locator('select[name="programId"] option:not([value=""])').first().getAttribute("value");
+  await createSection.locator('select[name="programId"]').selectOption(firstProgramOption);
   await Promise.all([
     superAdminPage.waitForURL((u) => u.searchParams.get("created") === "1"),
-    main(superAdminPage).getByRole("button", { name: "Create admin" }).click(),
+    createSection.getByRole("button", { name: "Create admin" }).click(),
   ]);
   createdAdminUsernames.push(username);
 }
@@ -179,10 +189,14 @@ async function run() {
   const bugStudentUsername = `e2e-bugstu-${RUN_ID}`;
   const otherStudentUsername = `e2e-otherstu-${RUN_ID}`;
   const passwordHash = await hashPassword("pass-123456");
+  // A STUDENT row always needs a program (see the users_program_required_check
+  // constraint) - which program doesn't matter for these bug-report fixtures,
+  // so just pick any real one.
+  const anyProgram = await prisma.program.findFirstOrThrow();
   await prisma.user.createMany({
     data: [
-      { firstName: "Bug", lastName: "Reporter", username: bugStudentUsername, passwordHash, role: "STUDENT" },
-      { firstName: "Other", lastName: "Student", username: otherStudentUsername, passwordHash, role: "STUDENT" },
+      { firstName: "Bug", lastName: "Reporter", username: bugStudentUsername, passwordHash, role: "STUDENT", programId: anyProgram.id },
+      { firstName: "Other", lastName: "Student", username: otherStudentUsername, passwordHash, role: "STUDENT", programId: anyProgram.id },
     ],
   });
 
