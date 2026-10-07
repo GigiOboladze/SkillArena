@@ -7,7 +7,7 @@
 export type HootQuestionTypeClient = "SINGLE_CHOICE" | "MULTIPLE_CHOICE" | "TRUE_FALSE";
 
 export type HootLobbyPlayer = {
-  userId: string;
+  playerId: string;
   username: string;
 };
 
@@ -55,7 +55,7 @@ export type HootAdminRevealPayload = {
 };
 
 export type HootLeaderboardEntry = {
-  userId: string;
+  playerId: string;
   username: string;
   score: number;
 };
@@ -85,7 +85,7 @@ export type HootYourAnswerResultPayload = {
   pointsAwarded: number;
 };
 
-/** Emitted to an old connection when the same user joins the same game from elsewhere (see spec #23). */
+/** Emitted to an old connection when the same player (by playerId - normally meaning the same device/cookie) joins the same game from elsewhere. */
 export type HootKickedPayload = {
   reason: "duplicate-session" | "game-finished" | "removed";
 };
@@ -106,9 +106,19 @@ export interface HootServerToClientEvents {
   "error": (payload: { message: string }) => void;
 }
 
-/** Events clients emit to the server. */
+/**
+ * Events clients emit to the server. player:join carries the player's own
+ * (playerId, clientToken) bearer credential directly in the payload rather
+ * than relying on a cookie read at the socket handshake - mirrors the
+ * legacy LIVE-mode `lobby:join` event exactly (see server.ts), which uses
+ * the identical (studentId, clientToken) pattern for the same reason: no
+ * SkillArena account/session cookie is involved on the player side at all.
+ */
 export interface HootClientToServerEvents {
-  "player:join": (payload: { gameId: string }, ack: (ok: boolean, error?: string) => void) => void;
+  "player:join": (
+    payload: { gameId: string; playerId: string; clientToken: string },
+    ack: (ok: boolean, error?: string) => void
+  ) => void;
   "host:join": (payload: { gameId: string }, ack: (ok: boolean, error?: string) => void) => void;
   "host:start": (payload: { gameId: string }) => void;
   "host:next": (payload: { gameId: string }) => void;

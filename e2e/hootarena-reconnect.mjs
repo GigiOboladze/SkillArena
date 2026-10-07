@@ -1,11 +1,15 @@
 // Regression test for the "students sometimes have to refresh" bug: a real
-// network blip (not a page reload) must not strand a student mid-game.
+// network blip (not a page reload) must not strand a player mid-game.
 // Uses Playwright's BrowserContext.setOffline to force the underlying
 // WebSocket transport to actually drop and let socket.io-client's own
 // auto-reconnect kick in - the exact mechanism that was silently stranding
-// 2-3 students per game (their client kept stale local React state while
+// 2-3 players per game (their client kept stale local React state while
 // the server had already cleaned up the old, dead socket's room membership,
 // and nothing ever re-ran player:join on the new connection).
+//
+// Players need NO SkillArena account at all - they join by PIN and pick a
+// nickname on the spot (see e2e/hootarena.mjs for the full lifecycle suite,
+// and hootarena-scoring.mjs for the pure scoring-function unit tests).
 //
 // Also verifies the server-authoritative timer is never reset by a
 // reconnect, and that the automatic (20s timeout) reveal path produces the
@@ -40,7 +44,6 @@ function freshPrisma() {
 const browser = await chromium.launch();
 const main = (p) => p.locator("main");
 const RUN_ID = Date.now();
-const STUDENT_PASSWORD = "pass-123456";
 
 async function adminLogin() {
   const page = await browser.newPage();
@@ -51,29 +54,19 @@ async function adminLogin() {
   return page;
 }
 
-async function studentLogin(username) {
+/** Joins a HootArena game anonymously, exactly like a real player: PIN entry -> nickname -> play. No login, no account. */
+async function joinAsGuest(pin, username) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/hootarena`, { waitUntil: "networkidle" });
+  await page.fill('input[name="pin"]', pin);
+  await Promise.all([page.waitForURL(`${BASE}/hootarena/join/${pin}`), page.click('button[type="submit"]')]);
   await page.fill('input[name="username"]', username);
-  await page.fill('input[name="password"]', STUDENT_PASSWORD);
-  await Promise.all([page.waitForURL(`${BASE}/dashboard`), page.click('button[type="submit"]')]);
-  return page;
-}
-
-async function createStudent(admin, username, groupLabel) {
-  await admin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
-  await Promise.all([admin.waitForURL(/[?&]program=/), admin.selectOption('select[name="program"]', { label: "Front-end Development" })]);
-  await admin.waitForLoadState("networkidle");
-  await main(admin).locator('input[name="firstName"]').fill("Reconnect");
-  await main(admin).locator('input[name="lastName"]').fill("Test");
-  await main(admin).locator('input[name="username"]').fill(username);
-  await main(admin).locator('input[name="password"]').fill(STUDENT_PASSWORD);
-  await main(admin).getByRole("radiogroup", { name: "JavaScript group" }).getByRole("radio", { name: groupLabel, exact: true }).check();
   await Promise.all([
-    admin.waitForURL((u) => u.searchParams.get("created") === username.toLowerCase()),
-    main(admin).getByRole("button", { name: "Create student" }).click(),
+    page.waitForURL((u) => /\/hootarena\/play\/[a-z0-9]+$/.test(u.pathname)),
+    main(page).locator('button[type="submit"]').click(),
   ]);
+  return page;
 }
 
 async function addQuestion(admin, gameId, { text, options, correct }) {
@@ -95,52 +88,37 @@ async function run() {
   const admin = await adminLogin();
   ok("super admin login");
 
-  const u1 = `e2e-recon-a1-${RUN_ID}`;
-  const u2 = `e2e-recon-a2-${RUN_ID}`;
-  await createStudent(admin, u1, "I");
-  await createStudent(admin, u2, "I");
-  ok("created 2 eligible students");
-
+  // ---------- Create the game (title only - no program/subject/group step at all) ----------
   await admin.goto(`${BASE}/admin/hootarena/new`, { waitUntil: "networkidle" });
   await admin.fill('input[name="title"]', `Reconnect Test ${RUN_ID}`);
-  await admin.selectOption('select[name="subjectId"]', { label: "JavaScript" });
   await Promise.all([
     admin.waitForURL((u) => /\/admin\/hootarena\/[a-z0-9]+$/.test(u.pathname) && !u.pathname.endsWith("/new")),
     main(admin).locator('button[type="submit"]').click(),
   ]);
   const gameId = admin.url().split("/").pop();
 
-  await main(admin).getByRole("checkbox", { name: "Group I", exact: true }).check();
-  await main(admin).getByRole("button", { name: "Save subject & groups" }).click();
-  await admin.waitForLoadState("networkidle");
-
   await addQuestion(admin, gameId, { text: "Q1 for reconnect test", options: ["Right", "Wrong", "Also wrong", "Still wrong"], correct: [1] });
   await addQuestion(admin, gameId, { text: "Q2 for reconnect test", options: ["Right", "Wrong", "Also wrong", "Still wrong"], correct: [1] });
-  ok("created game with 2 questions, targeted at Group I");
+  ok("created game with 2 questions, no program/subject/group step required");
 
-  const pinText = await main(admin).locator('span:has-text("Game PIN:")').innerText();
-  const pin = pinText.match(/\d{6}/)[0];
+  const pinBadge = await main(admin).locator("p.font-mono").innerText();
+  const pin = pinBadge.match(/\d{6}/)?.[0];
+  await assert(/^\d{6}$/.test(pin), `expected a 6-digit PIN, got "${pinBadge}"`);
 
-  const a1 = await studentLogin(u1);
-  const a2 = await studentLogin(u2);
-  for (const p of [a1, a2]) {
-    await p.goto(`${BASE}/dashboard/hootarena`, { waitUntil: "networkidle" });
-    await p.fill('input[name="pin"]', pin);
-    await Promise.all([
-      p.waitForURL(`${BASE}/dashboard/hootarena/play/${gameId}`),
-      main(p).locator('button[type="submit"]').click(),
-    ]);
-  }
+  const u1 = `e2e-recon-a1-${RUN_ID}`;
+  const u2 = `e2e-recon-a2-${RUN_ID}`;
+  const a1 = await joinAsGuest(pin, u1);
+  const a2 = await joinAsGuest(pin, u2);
   await a1.waitForSelector(`text=You're in, ${u1}!`, { timeout: 10000 });
   await a2.waitForSelector(`text=You're in, ${u2}!`, { timeout: 10000 });
-  ok("both students joined the lobby");
+  ok("both players joined anonymously (PIN + nickname, no account) into the lobby");
 
   await admin.goto(`${BASE}/admin/hootarena/${gameId}/host`, { waitUntil: "networkidle" });
   await admin.waitForSelector('button:has-text("Start game"):not([disabled])', { timeout: 10000 });
   await admin.click('button:has-text("Start game")');
   await a1.waitForSelector("text=Q1 for reconnect test", { timeout: 10000 });
   await a2.waitForSelector("text=Q1 for reconnect test", { timeout: 10000 });
-  ok("Q1 is live for both students");
+  ok("Q1 is live for both players");
 
   // ---------- Reconnect mid-QUESTION, before answering - no page reload ----------
   const questionStartedAt = Date.now();
@@ -160,18 +138,17 @@ async function run() {
   await assert(displayedSeconds < 19, `timer must not have been reset to a fresh 20s on reconnect - got ${displayedSeconds}s`);
   ok("reconnecting mid-question (network blip, no page reload) restores the same question with the server-authoritative remaining time, not a fresh 20s");
 
-  // Student must still be able to answer normally after reconnecting.
+  // Player must still be able to answer normally after reconnecting.
   await a1.getByRole("button", { name: "Right", exact: true }).click();
   await a1.waitForSelector("text=Locked in - waiting for the others...", { timeout: 10000 });
-  ok("student can still answer normally after the reconnect");
+  ok("player can still answer normally after the reconnect");
 
   await a2.getByRole("button", { name: "Right", exact: true }).click();
   await admin.waitForSelector("text=2/2 answered", { timeout: 10000 });
 
   // ---------- No duplicate player row, no duplicate response row, no score corruption from the reconnect ----------
   const prisma = freshPrisma();
-  const a1User = await prisma.user.findUniqueOrThrow({ where: { username: u1 } });
-  const playerRows = await prisma.hootPlayer.findMany({ where: { gameId, userId: a1User.id } });
+  const playerRows = await prisma.hootPlayer.findMany({ where: { gameId, username: u1 } });
   await assert(playerRows.length === 1, `expected exactly 1 HootPlayer row for a1 after the reconnect, found ${playerRows.length}`);
   const responseRows = await prisma.hootResponse.findMany({ where: { gameId, playerId: playerRows[0].id } });
   await assert(responseRows.length === 1, `expected exactly 1 HootResponse row for a1's single answer, found ${responseRows.length}`);
@@ -185,7 +162,7 @@ async function run() {
   await a2.waitForTimeout(2000);
   await a2.context().setOffline(false);
   await a2.waitForSelector("text=Correct!", { timeout: 10000 });
-  ok("a student disconnected right as REVEAL started, reconnects (no reload) straight into the reveal state - not stuck on the question screen");
+  ok("a player disconnected right as REVEAL started, reconnects (no reload) straight into the reveal state - not stuck on the question screen");
 
   // ---------- Reconnect during LEADERBOARD ----------
   await admin.click('button:has-text("Show leaderboard")');
@@ -203,12 +180,12 @@ async function run() {
   await a2.waitForTimeout(2000);
   await a2.context().setOffline(false);
   await a2.waitForSelector("text=Q2 for reconnect test", { timeout: 10000 });
-  ok("a student who was offline exactly when the host advanced to the next question reconnects into the CURRENT question, not stale Q1 state");
+  ok("a player who was offline exactly when the host advanced to the next question reconnects into the CURRENT question, not stale Q1 state");
 
   // a1's own several reconnects above must never have shown them a "kicked" message.
   const a1FullText = await a1.locator("body").innerText();
-  await assert(!a1FullText.includes("disconnected"), "a student's own legitimate reconnects must never trigger the duplicate-session kick message against themselves");
-  ok("a student's own reconnects never trigger the duplicate-session kick mechanism against themselves");
+  await assert(!a1FullText.includes("disconnected"), "a player's own legitimate reconnects must never trigger the duplicate-session kick message against themselves");
+  ok("a player's own reconnects never trigger the duplicate-session kick mechanism against themselves");
 
   // ---------- Host reconnect mid-game ----------
   await admin.context().setOffline(true);

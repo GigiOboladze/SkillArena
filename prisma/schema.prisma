@@ -94,8 +94,7 @@ model User {
   ownedHomeworks Homework[]            @relation("HomeworkOwner")
   subjectGroups  StudentSubjectGroup[]
   bugReports     BugReport[]
-  hootGamesHosted HootGame[]   @relation("HootGameHost")
-  hootPlayers     HootPlayer[]
+  hootGamesHosted HootGame[] @relation("HootGameHost")
 
   @@index([programId])
   @@map("users")
@@ -190,7 +189,6 @@ model Subject {
   groups        Group[]
   studentGroups StudentSubjectGroup[]
   homeworks     Homework[]
-  hootGames     HootGame[]
 
   @@unique([programId, name])
   @@index([programId])
@@ -206,7 +204,6 @@ model Group {
 
   studentMemberships StudentSubjectGroup[]
   quizTargets        QuizTargetGroup[]
-  hootTargets        HootTargetGroup[]
 
   @@unique([subjectId, name])
   @@index([subjectId])
@@ -519,13 +516,16 @@ enum HootQuestionType {
 // message - rows are kept (not deleted) after FINISHED since #21 only rules
 // out building history *UI*, not keeping the row that the live game itself
 // depends on while it's winding down.
+// A HootArena game is PIN/QR-joinable by anyone, with no SkillArena account
+// and no program/group targeting - access control is "whoever the host
+// shares the PIN with", same trust model as the legacy LIVE homework join
+// flow (see Student/clientToken below). hostId still anchors ADMIN-side
+// management (a regular Admin manages games they created; Super Admin
+// manages any), since the admin side stays fully account-based.
 model HootGame {
   id     String @id @default(cuid())
   pin    String @unique
   title  String
-
-  subjectId String
-  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
 
   hostId String
   host   User   @relation("HootGameHost", fields: [hostId], references: [id], onDelete: Restrict)
@@ -537,31 +537,13 @@ model HootGame {
   startedAt  DateTime?
   finishedAt DateTime?
 
-  targetGroups HootTargetGroup[]
-  questions    HootQuestion[]
-  players      HootPlayer[]
-  responses    HootResponse[]
+  questions HootQuestion[]
+  players   HootPlayer[]
+  responses HootResponse[]
 
-  @@index([subjectId])
   @@index([hostId])
   @@index([status])
   @@map("hoot_games")
-}
-
-// Which groups (within the game's one subject) may join - same shape/intent
-// as QuizTargetGroup. Empty = nobody can join yet (admin must pick at least
-// one group before launching).
-model HootTargetGroup {
-  id     String   @id @default(cuid())
-  gameId String
-  game   HootGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
-
-  groupId String
-  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
-
-  @@unique([gameId, groupId])
-  @@index([groupId])
-  @@map("hoot_target_groups")
 }
 
 model HootQuestion {
@@ -594,25 +576,31 @@ model HootOption {
   @@map("hoot_options")
 }
 
-// One row per (game, user) - the @@unique is what makes rejoin/reconnect
-// idempotent (upsert onto the same row, same score) instead of ever creating
-// a duplicate player or resetting progress. `connected` is soft presence
-// state for the host's live player count, not a hard gate on anything.
+// A player is just a self-chosen nickname for this one game - no SkillArena
+// account at all (matches the legacy LIVE homework Student/clientToken
+// pattern: an opaque random clientToken, stored in the player's browser
+// cookie via the shared session envelope, is the only credential proving
+// "this browser is this player"; see src/lib/hootarena/player-session.ts).
+// @@unique([gameId, username]) is both the "no two players with the same
+// name in one game" rule AND what makes a reconnect idempotent (the join
+// flow looks up the existing row by (gameId, username, clientToken) rather
+// than ever creating a second one for a returning player). `connected` is
+// soft presence state for the host's live player count, not a hard gate.
 model HootPlayer {
   id     String   @id @default(cuid())
   gameId String
   game   HootGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username    String
+  clientToken String
 
-  score     Int     @default(0)
-  connected Boolean @default(true)
+  score     Int      @default(0)
+  connected Boolean  @default(true)
   joinedAt  DateTime @default(now())
 
   responses HootResponse[]
 
-  @@unique([gameId, userId])
+  @@unique([gameId, username])
   @@index([gameId])
   @@map("hoot_players")
 }

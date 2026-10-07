@@ -63,3 +63,25 @@ export async function getIncoRateLimitKey(): Promise<string> {
   });
   return token;
 }
+
+// Same idea as getIncoRateLimitKey, for HootArena's own PIN-join attempts -
+// a separate cookie since the two features are unrelated, but identical
+// reasoning: PIN-guessing needs a per-browser rate limit key, and there's no
+// logged-in account here to key it by instead (HootArena players have no
+// SkillArena account at all).
+const HOOT_RATE_LIMIT_COOKIE = "hoot_rl";
+
+export async function getHootRateLimitKey(): Promise<string> {
+  const store = await cookies();
+  const existing = store.get(HOOT_RATE_LIMIT_COOKIE)?.value;
+  if (existing) return existing;
+
+  const token = generateToken();
+  store.set(HOOT_RATE_LIMIT_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 30,
+    path: "/",
+  });
+  return token;
+}

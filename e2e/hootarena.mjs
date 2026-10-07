@@ -1,17 +1,11 @@
-// End-to-end lifecycle test for HootArena, the live Kahoot-style quiz
-// system, against a running dev/prod server. Exercises what's unique to
-// HootArena (not already covered by the quiz/program-isolation suites):
-// PIN join + real-time eligibility enforcement, all three question types,
-// Kahoot-style speed scoring including an all-or-nothing multiple-choice
-// miss and a never-answered ("timeout") case, the top-3-only privacy limit
-// on the student leaderboard view vs. the full board the host sees,
-// same-session reconnect mid-question (must show "already answered" rather
-// than re-prompting), duplicate-login kicking the older session, and the
-// "reopening HootArena resumes your active game" behavior.
+// Full lifecycle e2e test for HootArena, the live Kahoot-style quiz system.
+// Players need NO SkillArena account at all - they join by PIN or QR and
+// pick a nickname on the spot (see e2e/hootarena-reconnect.mjs for the
+// dedicated reconnect/state-sync suite, and hootarena-scoring.mjs for the
+// pure scoring-function unit tests).
 //
-// Needs the Super Admin (ADMIN_USERNAME/ADMIN_PASSWORD from .env) and the
-// seeded curriculum (`npm run db:seed`) - creates its own throwaway
-// students/game, safe against a local dev database only.
+// Needs the Super Admin (ADMIN_USERNAME/ADMIN_PASSWORD from .env). Creates
+// its own throwaway game/players, safe against a local dev database only.
 // Run: npm run test:e2e:hootarena
 import "dotenv/config";
 import { chromium } from "playwright";
@@ -31,7 +25,6 @@ async function assert(cond, message) { if (!cond) throw new Error(message); }
 const browser = await chromium.launch();
 const main = (p) => p.locator("main");
 const RUN_ID = Date.now();
-const STUDENT_PASSWORD = "pass-123456";
 
 async function adminLogin() {
   const page = await browser.newPage();
@@ -42,37 +35,36 @@ async function adminLogin() {
   return page;
 }
 
-async function studentLogin(username) {
-  // An explicit context (not browser.newPage()'s implicit one) so a later
-  // step can open a second page in this same logged-in session, e.g. to
-  // prove "reopening HootArena resumes your active game" from a fresh tab.
+/** Joins a HootArena game anonymously, exactly like a real player: PIN entry -> nickname -> play. No login, no account. */
+async function joinAsGuest(pin, username) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/hootarena`, { waitUntil: "networkidle" });
+  await page.fill('input[name="pin"]', pin);
+  await Promise.all([page.waitForURL(`${BASE}/hootarena/join/${pin}`), page.click('button[type="submit"]')]);
   await page.fill('input[name="username"]', username);
-  await page.fill('input[name="password"]', STUDENT_PASSWORD);
-  await Promise.all([page.waitForURL(`${BASE}/dashboard`), page.click('button[type="submit"]')]);
+  await Promise.all([
+    page.waitForURL((u) => /\/hootarena\/play\/[a-z0-9]+$/.test(u.pathname)),
+    main(page).locator('button[type="submit"]').click(),
+  ]);
   return page;
 }
 
-/** Creates a student under `programLabel` (Super Admin only - switches via the page's own ProgramSelector), assigned to `subjectName` / `groupLabel` (e.g. "I"). */
-async function createStudent(admin, username, programLabel, subjectName, groupLabel) {
-  await admin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
-  await Promise.all([admin.waitForURL(/[?&]program=/), admin.selectOption('select[name="program"]', { label: programLabel })]);
-  await admin.waitForLoadState("networkidle");
-  await main(admin).locator('input[name="firstName"]').fill("Hoot");
-  await main(admin).locator('input[name="lastName"]').fill("Test");
-  await main(admin).locator('input[name="username"]').fill(username);
-  await main(admin).locator('input[name="password"]').fill(STUDENT_PASSWORD);
-  if (groupLabel) {
-    await main(admin)
-      .getByRole("radiogroup", { name: `${subjectName} group` })
-      .getByRole("radio", { name: groupLabel, exact: true })
-      .check();
+async function addQuestion(admin, gameId, { text, options, correct, type }) {
+  await admin.goto(`${BASE}/admin/hootarena/${gameId}/questions/new`, { waitUntil: "networkidle" });
+  if (type) {
+    await admin.selectOption('select[name="type"]', { label: type });
+  }
+  await admin.fill('textarea[name="text"]', text);
+  for (const [i, optText] of options.entries()) {
+    await admin.fill(`input[name="opt${i + 1}"]`, optText);
+  }
+  for (const c of correct) {
+    await admin.check(`input[name="correct"][value="${c}"]`);
   }
   await Promise.all([
-    admin.waitForURL((u) => u.searchParams.get("created") === username.toLowerCase()),
-    main(admin).getByRole("button", { name: "Create student" }).click(),
+    admin.waitForURL(`${BASE}/admin/hootarena/${gameId}`),
+    main(admin).locator('button[type="submit"]').click(),
   ]);
 }
 
@@ -80,77 +72,39 @@ async function run() {
   const admin = await adminLogin();
   ok("super admin login");
 
-  // ---------- Fixture students ----------
-  // Front-end Development, subject "JavaScript" (4 groups I-IV seeded):
-  // four eligible Group I players (a1..a4) to get a real 4th-place player
-  // for the top-3 privacy check, plus one Group II player (b1) to prove
-  // group-targeting is enforced, not just program membership.
-  for (const [user, group] of [
-    [`e2e-hoot-a1-${RUN_ID}`, "I"],
-    [`e2e-hoot-a2-${RUN_ID}`, "I"],
-    [`e2e-hoot-a3-${RUN_ID}`, "I"],
-    [`e2e-hoot-a4-${RUN_ID}`, "I"],
-    [`e2e-hoot-b1-${RUN_ID}`, "II"],
-  ]) {
-    await createStudent(admin, user, "Front-end Development", "JavaScript", group);
-  }
-  ok("created 4 eligible (Group I) and 1 ineligible (Group II) Front-end students");
-
-  // Networks program, subject "ინგლისური" Group I - same group LABEL as an
-  // eligible player above, different PROGRAM entirely, to prove a matching
-  // group number in the wrong program is still rejected.
-  await createStudent(admin, `e2e-hoot-net-${RUN_ID}`, "Networks", "ინგლისური", "I");
-  ok("created 1 same-group-number student in a different program (Networks)");
-
-  // ---------- Create the game ----------
+  // ---------- Create the game (title only - no program/subject/group step at all) ----------
   await admin.goto(`${BASE}/admin/hootarena/new`, { waitUntil: "networkidle" });
   await admin.fill('input[name="title"]', `E2E Hoot ${RUN_ID}`);
-  await admin.selectOption('select[name="subjectId"]', { label: "JavaScript" });
   await Promise.all([
     admin.waitForURL((u) => /\/admin\/hootarena\/[a-z0-9]+$/.test(u.pathname) && !u.pathname.endsWith("/new")),
     main(admin).locator('button[type="submit"]').click(),
   ]);
   const gameId = admin.url().split("/").pop();
-  ok(`created HootArena game (${gameId})`);
+  ok(`created HootArena game (${gameId}), no program/subject/group step required`);
 
-  // Target Group I only.
-  await main(admin).getByRole("checkbox", { name: "Group I", exact: true }).check();
-  await main(admin).getByRole("button", { name: "Save subject & groups" }).click();
-  await admin.waitForLoadState("networkidle");
-  ok("targeted Group I only");
+  // ---------- QR code + join link are shown on the management page ----------
+  const managePageText = await main(admin).innerText();
+  await assert(managePageText.includes("Join code & QR"), "the management page should show a QR/join-link section");
+  const qrImage = await admin.locator('img[alt^="QR code to join"]').count();
+  await assert(qrImage === 1, "expected a scannable QR code image on the management page");
+  const pinBadge = await main(admin).locator("p.font-mono").innerText();
+  const pin = pinBadge.match(/\d{6}/)?.[0];
+  await assert(/^\d{6}$/.test(pin), `expected a 6-digit PIN, got "${pinBadge}"`);
+  const joinLink = await admin.locator(`a[href*="/hootarena/join/${pin}"]`).count();
+  await assert(joinLink >= 1, "expected the join link to point at /hootarena/join/{pin}");
+  ok(`game PIN generated (${pin}) with a working QR code and join link shown to the admin`);
 
   // ---------- Questions: one of each type ----------
-  async function addQuestion({ type, text, options, correct }) {
-    await admin.goto(`${BASE}/admin/hootarena/${gameId}/questions/new`, { waitUntil: "networkidle" });
-    if (type !== "SINGLE_CHOICE") {
-      await admin.selectOption('select[name="type"]', {
-        label: type === "MULTIPLE_CHOICE" ? "Multiple Choice - one or more correct answers" : "True / False",
-      });
-    }
-    await admin.fill('textarea[name="text"]', text);
-    for (const [i, optText] of options.entries()) {
-      await admin.fill(`input[name="opt${i + 1}"]`, optText);
-    }
-    for (const c of correct) {
-      await admin.check(`input[name="correct"][value="${c}"]`);
-    }
-    await Promise.all([
-      admin.waitForURL(`${BASE}/admin/hootarena/${gameId}`),
-      main(admin).locator('button[type="submit"]').click(),
-    ]);
-  }
-
-  await addQuestion({
-    type: "SINGLE_CHOICE",
+  await addQuestion(admin, gameId, {
     text: "What year was JavaScript created?",
     options: ["1995", "2000", "2010", "1990"],
     correct: [1],
   });
-  await addQuestion({
-    type: "MULTIPLE_CHOICE",
+  await addQuestion(admin, gameId, {
     text: "Which of these are JavaScript primitive types?",
     options: ["string", "number", "array", "object"],
     correct: [1, 2],
+    type: "Multiple Choice - one or more correct answers",
   });
   await admin.goto(`${BASE}/admin/hootarena/${gameId}/questions/new`, { waitUntil: "networkidle" });
   await admin.selectOption('select[name="type"]', { label: "True / False" });
@@ -162,87 +116,67 @@ async function run() {
   ]);
   ok("added one Single Choice, one Multiple Choice, and one True/False question");
 
-  const pinText = await main(admin).locator('span:has-text("Game PIN:")').innerText();
-  const pin = pinText.match(/\d{6}/)?.[0];
-  await assert(/^\d{6}$/.test(pin), `expected a 6-digit PIN, got "${pinText}"`);
-  ok(`game PIN generated: ${pin}`);
-
   await admin.goto(`${BASE}/admin/hootarena/${gameId}/host`, { waitUntil: "networkidle" });
-  // `admin` is the host page itself from here on - same account, one tab.
 
-  // ---------- Eligibility enforcement: wrong group, wrong program ----------
-  const b1 = await studentLogin(`e2e-hoot-b1-${RUN_ID}`);
-  await b1.goto(`${BASE}/dashboard/hootarena`, { waitUntil: "networkidle" });
-  await b1.fill('input[name="pin"]', pin);
-  await Promise.all([
-    b1.waitForURL((u) => u.searchParams.get("error") === "ineligible"),
-    main(b1).locator('button[type="submit"]').click(),
-  ]);
-  await assert((await main(b1).innerText()).includes("not eligible"), "expected an 'ineligible' message for a Group II student");
-  ok("Group II student (same subject, wrong group) is rejected with a friendly message");
-  await b1.close();
-
-  const netStudent = await studentLogin(`e2e-hoot-net-${RUN_ID}`);
-  await netStudent.goto(`${BASE}/dashboard/hootarena`, { waitUntil: "networkidle" });
-  await netStudent.fill('input[name="pin"]', pin);
-  await Promise.all([
-    netStudent.waitForURL((u) => u.searchParams.get("error") === "ineligible"),
-    main(netStudent).locator('button[type="submit"]').click(),
-  ]);
-  ok("Networks student (matching group NUMBER, wrong program) is rejected");
-  await netStudent.close();
-
-  // Malformed / unknown PIN.
-  const junkPinPage = await studentLogin(`e2e-hoot-a1-${RUN_ID}`);
-  await junkPinPage.goto(`${BASE}/dashboard/hootarena`, { waitUntil: "networkidle" });
-  await junkPinPage.fill('input[name="pin"]', "000000");
-  await Promise.all([
-    junkPinPage.waitForURL((u) => u.searchParams.get("error") === "notfound"),
-    main(junkPinPage).locator('button[type="submit"]').click(),
-  ]);
-  ok("a well-formed but nonexistent PIN is rejected with 'not found', not a crash");
-
-  // ---------- Four eligible players join ----------
-  const a1 = junkPinPage; // already logged in as a1 above; reuse the session
-  const students = { a1 };
-  await a1.goto(`${BASE}/dashboard/hootarena`, { waitUntil: "networkidle" });
-  await a1.fill('input[name="pin"]', pin);
-  await Promise.all([
-    a1.waitForURL(`${BASE}/dashboard/hootarena/play/${gameId}`),
-    main(a1).locator('button[type="submit"]').click(),
-  ]);
+  // ---------- Anonymous join: PIN entry -> nickname -> play, no account ----------
+  const a1 = await joinAsGuest(pin, `e2e-hoot-a1-${RUN_ID}`);
   await a1.waitForSelector(`text=You're in, e2e-hoot-a1-${RUN_ID}!`, { timeout: 10000 });
-  ok("a1 joined via PIN and lands in the lobby");
+  ok("a1 joined anonymously via PIN + self-chosen nickname, no SkillArena account");
 
+  // ---------- Nickname collision: same (and case-different) name rejected ----------
+  const dupContext = await browser.newContext();
+  const dupPage = await dupContext.newPage();
+  await dupPage.goto(`${BASE}/hootarena/join/${pin}`, { waitUntil: "networkidle" });
+  await dupPage.fill('input[name="username"]', `e2e-hoot-a1-${RUN_ID}`); // exact duplicate
+  await Promise.all([
+    dupPage.waitForURL((u) => u.searchParams.get("error") === "taken"),
+    main(dupPage).locator('button[type="submit"]').click(),
+  ]);
+  await assert((await main(dupPage).innerText()).includes("already taken"), "expected a 'name taken' message for an exact duplicate nickname");
+  ok("an exact duplicate nickname in the same game is rejected");
+
+  await dupPage.goto(`${BASE}/hootarena/join/${pin}`, { waitUntil: "networkidle" });
+  await dupPage.fill('input[name="username"]', `E2E-HOOT-A1-${RUN_ID}`); // case-different duplicate
+  await Promise.all([
+    dupPage.waitForURL((u) => u.searchParams.get("error") === "taken"),
+    main(dupPage).locator('button[type="submit"]').click(),
+  ]);
+  ok("a case-different duplicate nickname ('E2E-HOOT-A1' vs 'e2e-hoot-a1') is also rejected");
+  await dupContext.close();
+
+  // Remaining eligible players - small, distinctly-named group for the privacy/ranking checks below.
+  const students = { a1 };
   for (const n of [2, 3, 4]) {
     const username = `e2e-hoot-a${n}-${RUN_ID}`;
-    const p = await studentLogin(username);
-    await p.goto(`${BASE}/dashboard/hootarena`, { waitUntil: "networkidle" });
-    await p.fill('input[name="pin"]', pin);
-    await Promise.all([
-      p.waitForURL(`${BASE}/dashboard/hootarena/play/${gameId}`),
-      main(p).locator('button[type="submit"]').click(),
-    ]);
+    const p = await joinAsGuest(pin, username);
     await p.waitForSelector(`text=You're in, ${username}!`, { timeout: 10000 });
     students[`a${n}`] = p;
   }
-  ok("all 4 eligible players joined the lobby");
+  ok("all 4 players joined the lobby");
 
-  // ---------- "Reopening HootArena resumes your active game" ----------
-  const a1Resume = await a1.context().newPage();
-  await a1Resume.goto(`${BASE}/dashboard/hootarena`, { waitUntil: "networkidle" });
-  await assert(a1Resume.url() === `${BASE}/dashboard/hootarena/play/${gameId}`, `expected auto-redirect back into the active game, got ${a1Resume.url()}`);
-  await a1Resume.close();
-  ok("reopening /dashboard/hootarena while already in an active game resumes it instead of showing the PIN box");
+  // ---------- Resuming the direct play URL (no reload needed from the join flow, but confirms the cookie-based session persists) ----------
+  // Navigate a1's own page in place (a real browser reload) rather than opening a second page in the
+  // same context: a second page would hold a second live socket for the same playerId/clientToken at
+  // the same time as the first, which correctly triggers the server's duplicate-session kick on the
+  // original page - that's real product behavior (same as opening Kahoot in two tabs), not a bug, but
+  // it would leave a1's original page kicked for the rest of the test. A reload tears down the old
+  // socket before the new one connects, so there's never two live sessions at once.
+  await a1.goto(`${BASE}/hootarena/play/${gameId}`, { waitUntil: "networkidle" });
+  await assert(a1.url() === `${BASE}/hootarena/play/${gameId}`, `expected to land directly on the play page via the saved session, got ${a1.url()}`);
+  await a1.waitForSelector(`text=You're in, e2e-hoot-a1-${RUN_ID}!`, { timeout: 10000 });
+  ok("revisiting the play URL on the same device resumes the session via the saved cookie - no re-entering a nickname");
 
-  // ---------- Duplicate login kicks the older session ----------
-  const a1Dup = await studentLogin(`e2e-hoot-a1-${RUN_ID}`);
-  await a1Dup.goto(`${BASE}/dashboard/hootarena/play/${gameId}`, { waitUntil: "networkidle" });
-  await a1Dup.waitForSelector(`text=You're in, e2e-hoot-a1-${RUN_ID}!`, { timeout: 10000 });
-  await a1.waitForSelector("text=disconnected", { timeout: 10000 });
-  ok("logging in as the same student elsewhere kicks the original session, which sees a clear message");
-  await a1.close();
-  students.a1 = a1Dup; // the surviving session for a1 going forward
+  // ---------- Malformed / unknown PIN ----------
+  const junkPinPage = await browser.newPage();
+  await junkPinPage.goto(`${BASE}/hootarena`, { waitUntil: "networkidle" });
+  await junkPinPage.fill('input[name="pin"]', "000000");
+  await Promise.all([
+    junkPinPage.waitForURL(`${BASE}/hootarena/join/000000`),
+    junkPinPage.click('button[type="submit"]'),
+  ]);
+  await assert((await main(junkPinPage).innerText()).includes("couldn't find a game"), "a well-formed but nonexistent PIN should show a friendly not-found message");
+  ok("a well-formed but nonexistent PIN is rejected with 'not found', not a crash");
+  await junkPinPage.close();
 
   await admin.waitForSelector("text=4", { timeout: 10000 });
   await admin.waitForSelector('button:has-text("Start game"):not([disabled])', { timeout: 10000 });
@@ -319,7 +253,8 @@ async function run() {
   // Reconnect-mid-question check on the surviving a1 session: reload right
   // after answering and before the reveal - must show "locked in" rather
   // than re-presenting answerable tiles (the reconnect-replay path added to
-  // restoreHootStateForSocket in server.ts).
+  // restoreHootStateForSocket in server.ts). Separate dedicated coverage for
+  // real network-drop reconnects lives in e2e/hootarena-reconnect.mjs.
   await students.a1.reload({ waitUntil: "networkidle" });
   await students.a1.waitForSelector("text=Locked in - waiting for the others...", { timeout: 10000 });
   ok("a1 reloading mid-question (after answering) reconnects straight into the 'locked in' state, not a re-answerable question");
@@ -386,18 +321,11 @@ async function run() {
   ok("students' final results also stay limited to their own score + top 3, never the full board");
 
   // ---------- A finished game is no longer joinable ----------
-  // Reuses the (ineligible) Networks student's login - FINISHED must be
-  // checked and rejected before eligibility is even evaluated, so this
-  // still proves the "no longer joinable" behavior specifically.
-  const freshPinCheck = await studentLogin(`e2e-hoot-net-${RUN_ID}`);
-  await freshPinCheck.goto(`${BASE}/dashboard/hootarena`, { waitUntil: "networkidle" });
-  await freshPinCheck.fill('input[name="pin"]', pin);
-  await Promise.all([
-    freshPinCheck.waitForURL((u) => u.searchParams.get("error") === "ended"),
-    main(freshPinCheck).locator('button[type="submit"]').click(),
-  ]);
-  ok("a finished game's PIN is rejected as ended, not joinable anymore");
-  await freshPinCheck.close();
+  const latePage = await browser.newPage();
+  await latePage.goto(`${BASE}/hootarena/join/${pin}`, { waitUntil: "networkidle" });
+  await assert((await main(latePage).innerText()).includes("already ended"), "a finished game's join page must say it has ended, not offer a nickname field");
+  ok("a finished game's PIN/join link is rejected as ended, not joinable anymore");
+  await latePage.close();
 }
 
 try {
@@ -410,6 +338,6 @@ try {
   console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
   if (failed.length) {
     console.log("FAILURES:", failed);
-    process.exitCode = 1;
+    process.exit(1);
   }
 }

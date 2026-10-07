@@ -22,6 +22,7 @@ const ADMIN_TTL_SECONDS = 60 * 60 * 12; // admin's own, shorter-lived expiry, ch
 // modest since both maps share the same cookie.
 const MAX_STUDENT_ENTRIES = 15;
 const MAX_CREATOR_ENTRIES = 15;
+const MAX_HOOT_PLAYER_ENTRIES = 15;
 
 function getSecretKey() {
   const secret = process.env.SESSION_SECRET;
@@ -41,6 +42,11 @@ export type StudentUserSessionPayload = { userId: string; username: string };
 // userId/username; session.ts reads it directly off the envelope entry to
 // compare against the User row's current value (see User.sessionVersion).
 export type StudentSessionEntry = { studentId: string; clientToken: string };
+// Same shape/idea as StudentSessionEntry, for HootArena's own anonymous
+// per-game players (no SkillArena account at all - see HootPlayer.clientToken
+// in schema.prisma) - kept as a distinct type since the two are unrelated
+// concepts that happen to share a shape.
+export type HootPlayerSessionEntry = { playerId: string; clientToken: string };
 export type SessionEnvelope = {
   admin?: AdminSessionPayload & { exp: number; sv: number };
   studentUser?: StudentUserSessionPayload & { exp: number; sv: number };
@@ -51,6 +57,9 @@ export type SessionEnvelope = {
   // created a homework with no registration manage (edit, add questions,
   // host) only the ones they made, verified against Homework.creatorToken.
   creators?: Record<string, string>;
+  // Keyed by HootGame id - a player can be mid-way through several HootArena
+  // games at once (rare, but matches the `students` map's own reasoning).
+  hootPlayers?: Record<string, HootPlayerSessionEntry>;
 };
 
 export function sessionCookieName() {
@@ -148,6 +157,14 @@ export function withCreatorEntry(
   creatorToken: string
 ): SessionEnvelope {
   return { ...envelope, creators: withCappedEntry(envelope.creators, homeworkId, creatorToken, MAX_CREATOR_ENTRIES) };
+}
+
+export function withHootPlayerEntry(
+  envelope: SessionEnvelope,
+  gameId: string,
+  entry: HootPlayerSessionEntry
+): SessionEnvelope {
+  return { ...envelope, hootPlayers: withCappedEntry(envelope.hootPlayers, gameId, entry, MAX_HOOT_PLAYER_ENTRIES) };
 }
 
 // --- Backward-compatible admin-only surface, used by server.ts (raw

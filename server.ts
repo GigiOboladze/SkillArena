@@ -6,7 +6,6 @@ import {
   adminSessionCookieName,
   verifySessionEnvelope,
   adminFromEnvelope,
-  studentUserFromEnvelope,
 } from "./src/lib/session-core";
 import { computeMultipleChoicePoints, getLeaderboard } from "./src/lib/scoring";
 import type {
@@ -18,7 +17,7 @@ import type {
   LivePlayer,
 } from "./src/lib/socket-events";
 import { computeHootPoints, isSelectionCorrect, HOOT_QUESTION_SECONDS } from "./src/lib/hootarena/scoring";
-import { isStudentEligibleForHootGame, canAdminActOnProgram } from "./src/lib/hootarena/access";
+import { canAdminManageGame } from "./src/lib/hootarena/access";
 import type {
   HootClientToServerEvents,
   HootServerToClientEvents,
@@ -105,7 +104,7 @@ type HootGameState = {
   status: "LOBBY" | "QUESTION" | "REVEAL" | "LEADERBOARD" | "FINISHED";
   questionIndex: number;
   startedAt: number | null;
-  answeredUserIds: Set<string>;
+  answeredPlayerIds: Set<string>;
   timer: NodeJS.Timeout | null;
   currentQuestionPayload: HootClientQuestion | null;
   // The full admin-shaped breakdown is the one canonical reveal record kept
@@ -114,18 +113,20 @@ type HootGameState = {
   // one source of truth, no risk of the two shapes drifting apart.
   lastRevealPayload: HootAdminRevealPayload | null;
   totalPlayers: number;
-  // userId -> this namespace's socket.id, for targeted emits and duplicate-
-  // session detection. Only ever one entry per userId - a fresh join
-  // replaces (and disconnects) any prior socket for that same user.
+  // HootPlayer.id -> this namespace's socket.id, for targeted emits and
+  // duplicate-session detection. Only ever one entry per playerId - a fresh
+  // join replaces (and disconnects) any prior socket for that same player
+  // (normally meaning the same browser/device reconnecting, since playerId
+  // is only ever known via that device's own session cookie).
   playerSockets: Map<string, string>;
-  // userId -> the highest join-attempt sequence number that has actually
-  // won and registered itself in playerSockets. player:join is async (DB
-  // calls before it ever touches playerSockets), so on a rapid double
-  // reconnect two overlapping calls can resolve out of order - without
-  // this, a slower *older* join finishing after a faster *newer* one would
-  // clobber playerSockets with a stale socket.id. Compared against a
-  // call's own captured sequence number (see hootJoinCounter) before that
-  // call is allowed to write.
+  // HootPlayer.id -> the highest join-attempt sequence number that has
+  // actually won and registered itself in playerSockets. player:join is
+  // async (DB calls before it ever touches playerSockets), so on a rapid
+  // double reconnect two overlapping calls can resolve out of order -
+  // without this, a slower *older* join finishing after a faster *newer*
+  // one would clobber playerSockets with a stale socket.id. Compared
+  // against a call's own captured sequence number (see hootJoinCounter)
+  // before that call is allowed to write.
   playerJoinSeq: Map<string, number>;
   // Set of this namespace's socket.id values currently registered as host
   // (there can be more than one - e.g. two admin tabs, or a reconnect that
@@ -147,7 +148,7 @@ function getOrCreateHootState(gameId: string): HootGameState {
       status: "LOBBY",
       questionIndex: -1,
       startedAt: null,
-      answeredUserIds: new Set(),
+      answeredPlayerIds: new Set(),
       timer: null,
       currentQuestionPayload: null,
       lastRevealPayload: null,
@@ -559,37 +560,30 @@ app.prepare().then(() => {
     HootClientToServerEvents,
     HootServerToClientEvents,
     object,
-    { gameId?: string; userId?: string; username?: string; isHost?: boolean }
+    { gameId?: string; playerId?: string; username?: string; isHost?: boolean }
   >;
 
-  async function verifyHootStudent(socket: Socket): Promise<{ userId: string; username: string } | null> {
-    const token = parseCookie(socket.handshake.headers.cookie, adminSessionCookieName());
-    const envelope = token ? await verifySessionEnvelope(token) : {};
-    const session = studentUserFromEnvelope(envelope);
-    if (!session) return null;
-    const user = await prisma.user.findUnique({
-      where: { id: session.userId },
-      select: { role: true, sessionVersion: true, username: true },
-    });
-    if (!user || user.role !== "STUDENT" || user.sessionVersion !== session.sv) return null;
-    return { userId: session.userId, username: user.username };
-  }
+  // Players have no SkillArena account at all - player:join itself verifies
+  // identity directly via (playerId, gameId, clientToken) sent in the event
+  // payload (mirroring the legacy LIVE-mode lobby:join handler's identical
+  // (studentId, clientToken) pattern below), so there is no separate
+  // verifyHootPlayer-style helper the way there is for admins.
 
   async function verifyHootAdmin(
     socket: Socket
-  ): Promise<{ userId: string; role: "ADMIN" | "SUPER_ADMIN"; programId: string | null } | null> {
+  ): Promise<{ userId: string; role: "ADMIN" | "SUPER_ADMIN" } | null> {
     const token = parseCookie(socket.handshake.headers.cookie, adminSessionCookieName());
     const envelope = token ? await verifySessionEnvelope(token) : {};
     const session = adminFromEnvelope(envelope);
     if (!session) return null;
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { role: true, sessionVersion: true, programId: true },
+      select: { role: true, sessionVersion: true },
     });
     if (!user || (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") || user.sessionVersion !== session.sv) {
       return null;
     }
-    return { userId: session.userId, role: user.role, programId: user.programId };
+    return { userId: session.userId, role: user.role };
   }
 
   async function broadcastHootLobby(gameId: string) {
@@ -611,10 +605,10 @@ app.prepare().then(() => {
 
     const players = await prisma.hootPlayer.findMany({
       where: { gameId },
-      include: { user: { select: { username: true } } },
+      select: { id: true, username: true },
       orderBy: { joinedAt: "asc" },
     });
-    const list: HootLobbyPlayer[] = players.map((p) => ({ userId: p.userId, username: p.user.username }));
+    const list: HootLobbyPlayer[] = players.map((p) => ({ playerId: p.id, username: p.username }));
     state.totalPlayers = list.length;
     hoot.to(`hoot:${gameId}`).emit("lobby:update", { players: list });
   }
@@ -646,7 +640,7 @@ app.prepare().then(() => {
     state.status = "QUESTION";
     state.questionIndex = index;
     state.startedAt = payload.startedAt;
-    state.answeredUserIds = new Set();
+    state.answeredPlayerIds = new Set();
     state.currentQuestionPayload = payload;
 
     await prisma.hootGame.update({
@@ -750,9 +744,9 @@ app.prepare().then(() => {
   async function getHootLeaderboard(gameId: string): Promise<HootLeaderboardEntry[]> {
     const players = await prisma.hootPlayer.findMany({
       where: { gameId },
-      include: { user: { select: { username: true } } },
+      select: { id: true, username: true, score: true },
     });
-    const entries = players.map((p) => ({ userId: p.userId, username: p.user.username, score: p.score }));
+    const entries = players.map((p) => ({ playerId: p.id, username: p.username, score: p.score }));
     entries.sort((a, b) => b.score - a.score);
     return entries;
   }
@@ -789,31 +783,28 @@ app.prepare().then(() => {
     // Points earned THIS round, for the "+N" line on each player's own
     // result screen - looked up from the response they just submitted for
     // the question that was just revealed (0 if they didn't answer).
+    // HootResponse.playerId already IS HootPlayer.id, so no extra lookup
+    // is needed to key this by the same id the leaderboard entries use.
     const roundPoints = new Map<string, number>();
     const currentQuestionId = state.currentQuestionPayload?.questionId;
     if (currentQuestionId) {
-      const [responses, players] = await Promise.all([
-        prisma.hootResponse.findMany({
-          where: { questionId: currentQuestionId },
-          select: { playerId: true, pointsAwarded: true },
-        }),
-        prisma.hootPlayer.findMany({ where: { gameId }, select: { id: true, userId: true } }),
-      ]);
-      const playerIdToUserId = new Map(players.map((p) => [p.id, p.userId]));
+      const responses = await prisma.hootResponse.findMany({
+        where: { questionId: currentQuestionId },
+        select: { playerId: true, pointsAwarded: true },
+      });
       for (const r of responses) {
-        const userId = playerIdToUserId.get(r.playerId);
-        if (userId) roundPoints.set(userId, r.pointsAwarded);
+        roundPoints.set(r.playerId, r.pointsAwarded);
       }
     }
 
     for (const entry of leaderboard) {
-      const socketId = state.playerSockets.get(entry.userId);
+      const socketId = state.playerSockets.get(entry.playerId);
       if (!socketId) continue;
       hoot.to(socketId).emit(eventYou, {
         yourScore: entry.score,
-        pointsThisRound: roundPoints.get(entry.userId) ?? 0,
+        pointsThisRound: roundPoints.get(entry.playerId) ?? 0,
         top3: publicTop3,
-        youAreInTop3: top3.some((t) => t.userId === entry.userId),
+        youAreInTop3: top3.some((t) => t.playerId === entry.playerId),
       });
     }
   }
@@ -834,7 +825,7 @@ app.prepare().then(() => {
   function sendCurrentHootPhaseTo(
     socket: Socket,
     gameId: string,
-    identity: { isHost: true } | { isHost: false; userId: string }
+    identity: { isHost: true } | { isHost: false; playerId: string }
   ) {
     const state = hootStates.get(gameId);
     if (!state) return;
@@ -856,7 +847,7 @@ app.prepare().then(() => {
   async function restoreHootStateForSocket(
     socket: Socket,
     gameId: string,
-    identity: { isHost: true } | { isHost: false; userId: string }
+    identity: { isHost: true } | { isHost: false; playerId: string }
   ) {
     const state = hootStates.get(gameId);
     if (!state) return;
@@ -870,14 +861,9 @@ app.prepare().then(() => {
       // instead of re-presenting answerable tiles (spec: reconnect must land
       // back in the right phase, respecting an already-submitted answer).
       if (!identity.isHost && state.status === "QUESTION" && state.currentQuestionPayload) {
-        const player = await prisma.hootPlayer.findUnique({
-          where: { gameId_userId: { gameId, userId: identity.userId } },
+        const response = await prisma.hootResponse.findUnique({
+          where: { playerId_questionId: { playerId: identity.playerId, questionId: state.currentQuestionPayload.questionId } },
         });
-        const response = player
-          ? await prisma.hootResponse.findUnique({
-              where: { playerId_questionId: { playerId: player.id, questionId: state.currentQuestionPayload.questionId } },
-            })
-          : null;
         if (response) {
           socket.emit("answer:you", {
             questionId: response.questionId,
@@ -896,12 +882,12 @@ app.prepare().then(() => {
       return;
     }
     const top3 = leaderboard.slice(0, 3);
-    const mine = leaderboard.find((e) => e.userId === identity.userId);
+    const mine = leaderboard.find((e) => e.playerId === identity.playerId);
     socket.emit(state.status === "FINISHED" ? "finished:you" : "leaderboard:you", {
       yourScore: mine?.score ?? 0,
       pointsThisRound: 0,
       top3: top3.map(({ username, score }) => ({ username, score })),
-      youAreInTop3: top3.some((t) => t.userId === identity.userId),
+      youAreInTop3: top3.some((t) => t.playerId === identity.playerId),
     });
   }
 
@@ -948,23 +934,28 @@ app.prepare().then(() => {
   }
 
   hoot.on("connection", (socket) => {
-    socket.on("player:join", async ({ gameId }, ack) => {
+    socket.on("player:join", async ({ gameId, playerId, clientToken }, ack) => {
       // Captured synchronously, before any await - reflects true call-start
       // order, which is what "newest session wins" actually needs (the
-      // awaits below mean two overlapping join calls for the same user can
+      // awaits below mean two overlapping join calls for the same player can
       // otherwise finish in either order).
       const mySeq = ++hootJoinCounter;
       try {
-        const auth = await verifyHootStudent(socket);
-        if (!auth) {
-          ack(false, "Please log in again.");
+        // No SkillArena account involved at all - (playerId, clientToken) is
+        // a bearer credential for one specific HootPlayer row, created once
+        // by the join server action and never trusted from anywhere except
+        // this exact triple matching a real row (mirrors the legacy
+        // LIVE-mode lobby:join handler's identical (studentId, clientToken)
+        // check above). There is no eligibility check beyond this - a
+        // HootArena game has no program/group targeting at all; the PIN/QR
+        // itself is the only access control, by design.
+        const player = await prisma.hootPlayer.findFirst({ where: { id: playerId, gameId, clientToken } });
+        if (!player) {
+          ack(false, "Could not verify your session - please rejoin with the game PIN.");
           return;
         }
 
-        const game = await prisma.hootGame.findUnique({
-          where: { id: gameId },
-          select: { id: true, subjectId: true, status: true },
-        });
+        const game = await prisma.hootGame.findUnique({ where: { id: gameId }, select: { status: true } });
         if (!game) {
           ack(false, "This game no longer exists.");
           return;
@@ -974,54 +965,46 @@ app.prepare().then(() => {
           return;
         }
 
-        const eligible = await isStudentEligibleForHootGame(auth.userId, game);
-        if (!eligible) {
-          ack(false, "You're not eligible to join this game.");
-          return;
-        }
-
-        await prisma.hootPlayer.upsert({
-          where: { gameId_userId: { gameId, userId: auth.userId } },
-          create: { gameId, userId: auth.userId, score: 0 },
-          update: { connected: true },
-        });
+        await prisma.hootPlayer.update({ where: { id: player.id }, data: { connected: true } });
 
         const state = getOrCreateHootState(gameId);
 
         // A newer join (higher sequence number, i.e. started later) for
-        // this same user has already won and registered itself while this
+        // this same player has already won and registered itself while this
         // call was still awaiting the checks above - this call is stale
         // and must not clobber playerSockets with an older socket.id. The
         // socket is still ack'd true (it did validly authenticate), it
         // just doesn't become the registered "current" connection; if it's
         // genuinely a leftover old connection it will be disconnected by
         // the newer join's own kick logic momentarily, if it hasn't been already.
-        if ((state.playerJoinSeq.get(auth.userId) ?? 0) > mySeq) {
+        if ((state.playerJoinSeq.get(player.id) ?? 0) > mySeq) {
           ack(true);
           return;
         }
-        state.playerJoinSeq.set(auth.userId, mySeq);
+        state.playerJoinSeq.set(player.id, mySeq);
 
-        // Duplicate-session handling (spec #23): a fresh join for a userId
-        // already connected to this game kicks the old connection first,
-        // so there is never more than one live socket per (game, user).
-        const previousSocketId = state.playerSockets.get(auth.userId);
+        // Duplicate-session handling: a fresh join for a playerId already
+        // connected to this game kicks the old connection first, so there
+        // is never more than one live socket per player (normally meaning
+        // the same browser opened in two tabs, since playerId/clientToken
+        // are only ever known via that one device's own session cookie).
+        const previousSocketId = state.playerSockets.get(player.id);
         if (previousSocketId && previousSocketId !== socket.id) {
           const previousSocket = hoot.sockets.get(previousSocketId);
           previousSocket?.emit("kicked", { reason: "duplicate-session" });
           previousSocket?.disconnect(true);
         }
-        state.playerSockets.set(auth.userId, socket.id);
+        state.playerSockets.set(player.id, socket.id);
 
         socket.data.gameId = gameId;
-        socket.data.userId = auth.userId;
-        socket.data.username = auth.username;
+        socket.data.playerId = player.id;
+        socket.data.username = player.username;
         socket.data.isHost = false;
         socket.join(`hoot:${gameId}`);
 
         ack(true);
         await broadcastHootLobby(gameId);
-        await restoreHootStateForSocket(socket, gameId, { isHost: false, userId: auth.userId });
+        await restoreHootStateForSocket(socket, gameId, { isHost: false, playerId: player.id });
       } catch (err) {
         console.error("hootarena player:join failed", err);
         ack(false, "Server error");
@@ -1036,16 +1019,13 @@ app.prepare().then(() => {
           return;
         }
 
-        const game = await prisma.hootGame.findUnique({
-          where: { id: gameId },
-          include: { subject: true },
-        });
+        const game = await prisma.hootGame.findUnique({ where: { id: gameId }, select: { hostId: true } });
         if (!game) {
           ack(false, "This game no longer exists.");
           return;
         }
-        if (!canAdminActOnProgram(admin, game.subject.programId)) {
-          ack(false, "Not authorized for this program.");
+        if (!canAdminManageGame({ id: admin.userId, role: admin.role }, game)) {
+          ack(false, "You don't have access to this game.");
           return;
         }
 
@@ -1110,13 +1090,13 @@ app.prepare().then(() => {
 
     socket.on("player:answer", ({ gameId, questionId, selectedOptionIds }) => {
       (async () => {
-        const userId = socket.data.userId;
-        if (!userId || socket.data.gameId !== gameId) return;
+        const playerId = socket.data.playerId;
+        if (!playerId || socket.data.gameId !== gameId) return;
 
         const state = hootStates.get(gameId);
         if (!state || state.status !== "QUESTION" || !state.currentQuestionPayload) return;
         if (state.currentQuestionPayload.questionId !== questionId) return;
-        if (state.answeredUserIds.has(userId)) return; // one answer per question - no changes, no resubmits
+        if (state.answeredPlayerIds.has(playerId)) return; // one answer per question - no changes, no resubmits
 
         // Server-authoritative deadline check, independent of phase - closes
         // the race window where an answer arrives after the timer fired but
@@ -1131,9 +1111,6 @@ app.prepare().then(() => {
         });
         if (!question || question.gameId !== gameId) return;
 
-        const player = await prisma.hootPlayer.findUnique({ where: { gameId_userId: { gameId, userId } } });
-        if (!player) return;
-
         const validIds = new Set(question.options.map((o) => o.id));
         const cleanSelection = [...new Set(selectedOptionIds)].filter((id) => validIds.has(id));
 
@@ -1146,25 +1123,28 @@ app.prepare().then(() => {
         // client) can't slip past the in-memory check while this write is
         // still in flight; the @@unique on (playerId, questionId) is the
         // final backstop if it somehow still did.
-        state.answeredUserIds.add(userId);
+        state.answeredPlayerIds.add(playerId);
 
+        // playerId here is already HootPlayer.id (verified once at
+        // player:join time via the clientToken check, not re-derived from
+        // anything client-supplied in this event) - no extra lookup needed.
         await prisma.$transaction([
           prisma.hootResponse.create({
-            data: { gameId, questionId, playerId: player.id, selectedOptionIds: cleanSelection, isCorrect, pointsAwarded },
+            data: { gameId, questionId, playerId, selectedOptionIds: cleanSelection, isCorrect, pointsAwarded },
           }),
-          prisma.hootPlayer.update({ where: { id: player.id }, data: { score: { increment: pointsAwarded } } }),
+          prisma.hootPlayer.update({ where: { id: playerId }, data: { score: { increment: pointsAwarded } } }),
         ]);
 
         socket.emit("answer:you", { questionId, isCorrect, pointsAwarded });
         hoot.to(`hoot:${gameId}`).emit("answer:count", {
-          answered: state.answeredUserIds.size,
+          answered: state.answeredPlayerIds.size,
           total: state.totalPlayers,
         });
       })().catch((err) => console.error("hootarena player:answer failed", err));
     });
 
     socket.on("disconnect", () => {
-      const { gameId, userId, isHost } = socket.data;
+      const { gameId, playerId, isHost } = socket.data;
       if (!gameId) return;
       const state = hootStates.get(gameId);
       if (!state) return;
@@ -1173,9 +1153,9 @@ app.prepare().then(() => {
         state.hostSocketIds.delete(socket.id);
         // Host disconnect never tears down game state (spec #25) - it just
         // sits as-is until some host socket reconnects via host:join.
-      } else if (userId && state.playerSockets.get(userId) === socket.id) {
-        state.playerSockets.delete(userId);
-        prisma.hootPlayer.updateMany({ where: { gameId, userId }, data: { connected: false } }).catch(() => {});
+      } else if (playerId && state.playerSockets.get(playerId) === socket.id) {
+        state.playerSockets.delete(playerId);
+        prisma.hootPlayer.update({ where: { id: playerId }, data: { connected: false } }).catch(() => {});
         broadcastHootLobby(gameId).catch(() => {});
       }
     });

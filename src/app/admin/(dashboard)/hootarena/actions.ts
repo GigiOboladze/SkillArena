@@ -32,68 +32,25 @@ function requireHootGameEditable(game: { status: string }, redirectTo: string) {
   if (game.status !== "LOBBY") redirect(redirectTo);
 }
 
-export async function createHootGame(programId: string, formData: FormData) {
+/**
+ * A HootArena game has no program/subject/group targeting at all - it's
+ * joinable by PIN/QR alone, by anyone the host shares it with (no
+ * SkillArena account needed to play). So creation only ever needs a title.
+ */
+export async function createHootGame(formData: FormData) {
   const admin = await requireAdmin();
-  if (admin.role !== "SUPER_ADMIN" && programId !== admin.programId) {
-    redirect("/admin/hootarena/new?error=subject");
-  }
 
   const title = String(formData.get("title") || "").trim();
-  const subjectId = String(formData.get("subjectId") || "").trim();
-  if (!title) redirect(`/admin/hootarena/new?program=${programId}&error=title`);
-  if (!subjectId) redirect(`/admin/hootarena/new?program=${programId}&error=subject`);
-
-  // The subject must be real AND belong to the program this game is being
-  // created under - never trust the submitted subjectId alone.
-  const subject = await prisma.subject.findFirst({ where: { id: subjectId, programId } });
-  if (!subject) redirect(`/admin/hootarena/new?program=${programId}&error=subject`);
+  if (!title) redirect("/admin/hootarena/new?error=title");
 
   const pin = await generateUniqueHootPin();
 
   const game = await prisma.hootGame.create({
-    data: { title, pin, subjectId, hostId: admin.id },
+    data: { title, pin, hostId: admin.id },
   });
 
   revalidatePath("/admin/hootarena");
   redirect(`/admin/hootarena/${game.id}`);
-}
-
-/** Replaces the game's subject and its full set of target groups in one go - simpler and safer than diffing which checkboxes changed. */
-export async function updateHootGameTargeting(gameId: string, formData: FormData) {
-  const admin = await requireAdmin();
-  const game = await requireHootGameAccess(admin, gameId);
-  requireHootGameEditable(game, `/admin/hootarena/${gameId}`);
-
-  const subjectId = String(formData.get("subjectId") || "").trim();
-  if (!subjectId) redirect(`/admin/hootarena/${gameId}?error=subject`);
-
-  // A game's program is fixed at creation (via its subject) and never
-  // changes - retargeting to a different subject is only allowed within
-  // that same program, never as a back door to move a game between programs.
-  const currentProgramId = game.subject.programId;
-  const subject = await prisma.subject.findFirst({
-    where: { id: subjectId, programId: currentProgramId },
-    include: { groups: true },
-  });
-  if (!subject) redirect(`/admin/hootarena/${gameId}?error=subject`);
-
-  const validGroupIds = new Set(subject.groups.map((g) => g.id));
-  const selectedGroupIds = formData
-    .getAll("groupIds")
-    .map(String)
-    .filter((id) => validGroupIds.has(id));
-
-  await prisma.$transaction([
-    prisma.hootGame.update({ where: { id: gameId }, data: { subjectId } }),
-    prisma.hootTargetGroup.deleteMany({ where: { gameId } }),
-    prisma.hootTargetGroup.createMany({
-      data: selectedGroupIds.map((groupId) => ({ gameId, groupId })),
-    }),
-  ]);
-
-  revalidatePath(`/admin/hootarena/${gameId}`);
-  revalidatePath("/admin/hootarena");
-  redirect(`/admin/hootarena/${gameId}`);
 }
 
 export async function updateHootGameDetails(gameId: string, formData: FormData) {

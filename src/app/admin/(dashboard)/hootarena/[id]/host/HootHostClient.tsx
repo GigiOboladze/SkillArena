@@ -151,7 +151,7 @@ export function HootHostClient({
           <p className="text-rahoot-muted">player{players.length === 1 ? "" : "s"} joined</p>
           <div className="mt-4 flex max-w-lg flex-wrap justify-center gap-2">
             {players.map((p) => (
-              <span key={p.userId} className="badge bg-rahoot-red-light text-rahoot-red-dark">
+              <span key={p.playerId} className="badge bg-rahoot-red-light text-rahoot-red-dark">
                 {p.username}
               </span>
             ))}

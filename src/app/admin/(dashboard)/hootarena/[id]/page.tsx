@@ -1,18 +1,12 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getCurrentAdmin } from "@/lib/session";
 import { loadHootGameForAdmin } from "@/lib/hootarena/access";
 import { prisma } from "@/lib/prisma";
-import {
-  updateHootGameDetails,
-  updateHootGameTargeting,
-  deleteHootGame,
-  deleteHootQuestion,
-  moveHootQuestion,
-} from "../actions";
+import { generateHootJoinQrDataUrl, hootJoinUrlForPin } from "@/lib/qr";
+import { updateHootGameDetails, deleteHootGame, deleteHootQuestion, moveHootQuestion } from "../actions";
 import { DeleteHootGameButton } from "../DeleteHootGameButton";
-import { HootTargetingForm } from "./HootTargetingForm";
-import { listSubjectsWithGroups } from "@/lib/subjects";
 
 const TYPE_LABELS: Record<string, string> = {
   SINGLE_CHOICE: "Single Choice",
@@ -22,7 +16,6 @@ const TYPE_LABELS: Record<string, string> = {
 
 const ERROR_MESSAGES: Record<string, string> = {
   title: "Please enter a title.",
-  subject: "Please choose a subject.",
 };
 
 export default async function ManageHootGamePage({
@@ -39,20 +32,17 @@ export default async function ManageHootGamePage({
   const game = await loadHootGameForAdmin(admin, id);
   if (!game) notFound();
 
-  const [questions, subjects] = await Promise.all([
-    prisma.hootQuestion.findMany({
-      where: { gameId: game.id },
-      orderBy: { order: "asc" },
-      include: { options: { orderBy: { order: "asc" } } },
-    }),
-    listSubjectsWithGroups(game.subject.programId),
-  ]);
-  const targetGroups = await prisma.hootTargetGroup.findMany({ where: { gameId: game.id } });
+  const questions = await prisma.hootQuestion.findMany({
+    where: { gameId: game.id },
+    orderBy: { order: "asc" },
+    include: { options: { orderBy: { order: "asc" } } },
+  });
 
   const editable = game.status === "LOBBY";
   const updateDetails = updateHootGameDetails.bind(null, game.id);
-  const updateTargeting = updateHootGameTargeting.bind(null, game.id);
   const removeGame = deleteHootGame.bind(null, game.id);
+  const qrDataUrl = await generateHootJoinQrDataUrl(game.pin);
+  const joinUrl = hootJoinUrlForPin(game.pin);
 
   return (
     <div className="flex flex-col gap-8">
@@ -66,17 +56,14 @@ export default async function ManageHootGamePage({
             {questions.length} question{questions.length === 1 ? "" : "s"}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="badge bg-rahoot-red-light text-rahoot-red-dark text-base">Game PIN: {game.pin}</span>
-          <Link href={`/admin/hootarena/${game.id}/host`} className="btn btn-primary">
-            {editable ? "Open lobby" : "Open host controls"}
-          </Link>
-        </div>
+        <Link href={`/admin/hootarena/${game.id}/host`} className="btn btn-primary">
+          {editable ? "Open lobby" : "Open host controls"}
+        </Link>
       </div>
 
       {!editable && (
         <p className="text-sm text-rahoot-muted">
-          This game has started - questions and target groups are locked in. Manage it live from{" "}
+          This game has started - questions are locked in. Manage it live from{" "}
           <Link href={`/admin/hootarena/${game.id}/host`} className="text-rahoot-red hover:underline">
             host controls
           </Link>
@@ -84,22 +71,41 @@ export default async function ManageHootGamePage({
         </p>
       )}
 
-      {editable && (
-        <section className="card p-6">
-          <h2 className="font-bold">Subject &amp; target groups</h2>
-          <p className="mt-1 text-sm text-rahoot-muted">
-            Only students whose group (for this subject) is checked below will be able to join this game.
-          </p>
-          <div className="mt-4">
-            <HootTargetingForm
-              action={updateTargeting}
-              subjects={subjects}
-              currentSubjectId={game.subjectId}
-              currentGroupIds={targetGroups.map((g) => g.groupId)}
-            />
+      <section className="card p-6">
+        <h2 className="font-bold">Join code &amp; QR</h2>
+        <p className="mt-1 text-sm text-rahoot-muted">
+          Players scan the QR code or open the link - no account needed, they just pick a nickname.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-6">
+          <div>
+            <div className="inline-block rounded-2xl border-4 border-rahoot-red bg-white p-3">
+              <Image
+                src={qrDataUrl}
+                alt={`QR code to join ${game.title}`}
+                width={200}
+                height={200}
+                unoptimized
+                className="rounded-md"
+              />
+            </div>
+            <a
+              href={qrDataUrl}
+              download={`hootarena-${game.pin}-qr.png`}
+              className="mt-2 block text-center text-sm text-rahoot-red hover:underline"
+            >
+              Download QR
+            </a>
           </div>
-        </section>
-      )}
+          <div>
+            <p className="text-sm text-rahoot-muted">Game PIN</p>
+            <p className="font-mono text-4xl font-black tracking-widest">{game.pin}</p>
+            <p className="mt-3 text-sm text-rahoot-muted">Link</p>
+            <a href={joinUrl} className="break-all text-sm text-rahoot-red hover:underline">
+              {joinUrl}
+            </a>
+          </div>
+        </div>
+      </section>
 
       {editable && (
         <section className="card p-6">

@@ -16,7 +16,17 @@ import { OptionGrid, OptionTile } from "@/components/AnswerTiles";
 
 type Phase = "connecting" | "lobby" | "question" | "reveal" | "leaderboard" | "finished" | "kicked";
 
-export function HootPlayClient({ gameId, username }: { gameId: string; username: string }) {
+export function HootPlayClient({
+  gameId,
+  playerId,
+  clientToken,
+  username,
+}: {
+  gameId: string;
+  playerId: string;
+  clientToken: string;
+  username: string;
+}) {
   const [phase, setPhase] = useState<Phase>("connecting");
   const [players, setPlayers] = useState<HootLobbyPlayer[]>([]);
   const [question, setQuestion] = useState<HootClientQuestion | null>(null);
@@ -43,7 +53,7 @@ export function HootPlayClient({ gameId, username }: { gameId: string; username:
     // server-side), so calling it again here is exactly "ask the server for
     // the current authoritative state", not a fresh join.
     const join = () => {
-      socket.emit("player:join", { gameId }, (ok, err) => {
+      socket.emit("player:join", { gameId, playerId, clientToken }, (ok, err) => {
         if (!ok) {
           setError(err ?? "Could not join this game.");
           return;
@@ -103,7 +113,7 @@ export function HootPlayClient({ gameId, username }: { gameId: string; username:
       socket.off("answer:you", onYourResult);
       socket.off("kicked", onKicked);
     };
-  }, [gameId]);
+  }, [gameId, playerId, clientToken]);
 
   useEffect(() => {
     if (phase !== "question" || !question) return;
@@ -137,7 +147,7 @@ export function HootPlayClient({ gameId, username }: { gameId: string; username:
     return (
       <Centered>
         <p className="font-semibold text-rahoot-red">{error}</p>
-        <Link href="/dashboard/hootarena" className="btn btn-outline mt-4">
+        <Link href="/hootarena" className="btn btn-outline mt-4">
           Back
         </Link>
       </Centered>
@@ -152,7 +162,7 @@ export function HootPlayClient({ gameId, username }: { gameId: string; username:
             ? "You joined this game from another device or tab, so this session was disconnected."
             : "You've been disconnected from this game."}
         </p>
-        <Link href="/dashboard/hootarena" className="btn btn-outline mt-4">
+        <Link href="/hootarena" className="btn btn-outline mt-4">
           Back
         </Link>
       </Centered>
@@ -178,7 +188,7 @@ export function HootPlayClient({ gameId, username }: { gameId: string; username:
         </p>
         <div className="mt-3 flex max-w-md flex-wrap justify-center gap-2">
           {players.map((p) => (
-            <span key={p.userId} className="badge bg-rahoot-red-light text-rahoot-red-dark">
+            <span key={p.playerId} className="badge bg-rahoot-red-light text-rahoot-red-dark">
               {p.username}
             </span>
           ))}
@@ -189,7 +199,7 @@ export function HootPlayClient({ gameId, username }: { gameId: string; username:
 
   if (phase === "question" && question) {
     return (
-      <div className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-6 py-8">
+      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-6 py-8">
         <div className="flex items-center justify-between text-sm font-bold text-rahoot-muted">
           <span>
             Question {question.index + 1} of {question.total}
@@ -223,7 +233,7 @@ export function HootPlayClient({ gameId, username }: { gameId: string; username:
             Locked in - waiting for the others...
           </p>
         )}
-      </div>
+      </main>
     );
   }
 
@@ -267,7 +277,7 @@ export function HootPlayClient({ gameId, username }: { gameId: string; username:
         </div>
         {phase === "leaderboard" && <p className="mt-6 text-sm text-rahoot-muted">Waiting for the next question...</p>}
         {phase === "finished" && (
-          <Link href="/dashboard/hootarena" className="btn btn-outline mt-8">
+          <Link href="/hootarena" className="btn btn-outline mt-8">
             Back to HootArena
           </Link>
         )}
@@ -283,5 +293,5 @@ export function HootPlayClient({ gameId, username }: { gameId: string; username:
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">{children}</div>;
+  return <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">{children}</main>;
 }

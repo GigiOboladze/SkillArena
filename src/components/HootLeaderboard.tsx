@@ -3,7 +3,7 @@ import type { HootLeaderboardEntry, HootPublicLeaderboardEntry } from "@/lib/hoo
 const MEDALS = ["🥇", "🥈", "🥉"];
 
 /** Full ranked board - used by the host (who always sees everyone) and by a player's own final results view. */
-export function HootLeaderboard({ entries, highlightUserId }: { entries: HootLeaderboardEntry[]; highlightUserId?: string }) {
+export function HootLeaderboard({ entries, highlightPlayerId }: { entries: HootLeaderboardEntry[]; highlightPlayerId?: string }) {
   if (entries.length === 0) {
     return <p className="text-sm text-rahoot-muted">No players have joined yet.</p>;
   }
@@ -12,8 +12,8 @@ export function HootLeaderboard({ entries, highlightUserId }: { entries: HootLea
     <ol className="flex flex-col gap-2">
       {entries.map((e, i) => (
         <li
-          key={e.userId}
-          className={`card flex items-center justify-between gap-3 p-4 ${e.userId === highlightUserId ? "border-rahoot-red" : ""}`}
+          key={e.playerId}
+          className={`card flex items-center justify-between gap-3 p-4 ${e.playerId === highlightPlayerId ? "border-rahoot-red" : ""}`}
         >
           <div className="flex items-center gap-3">
             <span className="w-8 text-center text-lg font-black text-rahoot-red">{MEDALS[i] ?? i + 1}</span>

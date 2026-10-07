@@ -1,0 +1,41 @@
+import Link from "next/link";
+import { Logo } from "@/components/Logo";
+import { goToHootPin } from "./actions";
+
+export default async function HootArenaEntryPage({
+  searchParams,
+}: PageProps<"/hootarena">) {
+  const params = await searchParams;
+  const hasError = params?.error === "empty";
+
+  return (
+    <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
+      <div className="w-full max-w-sm text-center">
+        <Link href="/" className="inline-block">
+          <Logo size={44} priority className="mx-auto" />
+        </Link>
+        <h1 className="mt-6 text-2xl font-bold">Enter the Game PIN</h1>
+        <p className="mt-1 text-sm text-rahoot-muted">Your teacher shows this next to the QR code.</p>
+
+        <form action={goToHootPin} className="mt-8 flex flex-col gap-3">
+          <input
+            name="pin"
+            required
+            autoFocus
+            inputMode="numeric"
+            pattern="\d{6}"
+            maxLength={6}
+            minLength={6}
+            autoComplete="off"
+            placeholder="123456"
+            className="input text-center text-3xl font-black tracking-[0.3em]"
+          />
+          {hasError && <p className="text-sm font-medium text-rahoot-red">Please enter the 6-digit Game PIN.</p>}
+          <button type="submit" className="btn btn-primary">
+            Continue
+          </button>
+        </form>
+      </div>
+    </main>
+  );
+}
