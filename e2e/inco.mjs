@@ -70,7 +70,7 @@ async function run() {
 
   await regularAdmin.goto(`${BASE}/admin/inco`, { waitUntil: "networkidle" });
   const blockedText = await regularAdmin.locator("body").innerText();
-  await assert(blockedText.includes("This page could not be found"), "regular admin hitting /admin/inco directly must get 404, not the inbox");
+  await assert(blockedText.includes("Not found"), "regular admin hitting /admin/inco directly must get 404, not the inbox");
   ok("regular admin is blocked server-side from /admin/inco (direct URL, not just hidden nav)");
   await regularAdmin.close();
 

@@ -11,13 +11,16 @@ export function CountUp({ value, durationMs = 700 }: { value: number; durationMs
   const [display, setDisplay] = useState(0);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setDisplay(value);
-      return;
-    }
-    if (value <= 0) {
-      setDisplay(0);
-      return;
+    // Reduced motion, or nothing to count up to: settle straight on the final
+    // value. Done inside a requestAnimationFrame rather than synchronously in
+    // the effect body - a synchronous setState here forces an immediate second
+    // render pass for no benefit (what react-hooks/set-state-in-effect flags).
+    // One frame is imperceptible and the resulting value is identical.
+    const prefersReducedMotion =
+      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion || value <= 0) {
+      const settle = requestAnimationFrame(() => setDisplay(Math.max(0, value)));
+      return () => cancelAnimationFrame(settle);
     }
 
     const start = performance.now();

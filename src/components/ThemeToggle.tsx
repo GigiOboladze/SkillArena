@@ -1,35 +1,56 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { THEME_STORAGE_KEY } from "./ThemeInitScript";
 
 type Theme = "dark" | "light";
 
+/** Dispatched after this component changes the theme, so every mounted toggle re-reads it. */
+const THEME_CHANGE_EVENT = "skillarena:theme-change";
+
+function subscribeToTheme(onChange: () => void) {
+  window.addEventListener(THEME_CHANGE_EVENT, onChange);
+  return () => window.removeEventListener(THEME_CHANGE_EVENT, onChange);
+}
+
+/** The live theme, read from the attribute ThemeInitScript set before first paint. */
+function readTheme(): Theme {
+  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+}
+
 /**
- * Animated sun/moon theme switch. Reads the real theme from the DOM on
- * mount (already set by ThemeInitScript before paint, so this never causes
- * a flash) rather than assuming dark, then flips html[data-theme] and
- * persists to localStorage on click.
+ * `null` during SSR and the hydration render, because the real theme lives in
+ * the browser (localStorage -> html[data-theme]) and the server cannot know
+ * it. The button renders disabled and fully transparent in that state, which
+ * is what keeps a returning light-mode visitor from seeing a flash of the
+ * wrong icon.
+ */
+function readThemeOnServer(): null {
+  return null;
+}
+
+/**
+ * Animated sun/moon theme switch.
+ *
+ * `html[data-theme]` is external mutable state owned by ThemeInitScript, not
+ * by React, so it is read through useSyncExternalStore - the API intended for
+ * exactly that. This replaced a useState + "copy the DOM into state on mount"
+ * effect, which cost an extra render pass on every mount and is what
+ * react-hooks/set-state-in-effect flags. As a side benefit, several toggles on
+ * the same page (e.g. a layout's nav plus a fixed one) now stay in sync.
  */
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme | null>(null);
-
-  useEffect(() => {
-    const current = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
-    setTheme(current);
-  }, []);
+  const theme = useSyncExternalStore<Theme | null>(subscribeToTheme, readTheme, readThemeOnServer);
 
   function toggle() {
-    setTheme((prev) => {
-      const next: Theme = prev === "light" ? "dark" : "light";
-      document.documentElement.setAttribute("data-theme", next);
-      try {
-        localStorage.setItem(THEME_STORAGE_KEY, next);
-      } catch {
-        // Private browsing / storage disabled - the toggle still works for this page view.
-      }
-      return next;
-    });
+    const next: Theme = readTheme() === "light" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", next);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, next);
+    } catch {
+      // Private browsing / storage disabled - the toggle still works for this page view.
+    }
+    window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
   }
 
   return (

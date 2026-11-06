@@ -13,11 +13,27 @@ export async function gradeAnswer(
   if (!(await canManageHomework(homeworkId))) notFound();
 
   const verdict = String(formData.get("verdict") || "");
-  const points = Math.max(0, Number(formData.get("points")) || 0);
   if (verdict !== "correct" && verdict !== "incorrect") return;
 
+  // The answer must belong to a question of THIS homework. Authorizing the
+  // homework alone is not enough: a server action is an independently
+  // invocable endpoint, so without this scoping a caller who legitimately
+  // manages homework A (including an unregistered public creator, since
+  // homework creation needs no account) could grade - and arbitrarily
+  // re-score - any Answer row in the database.
+  const answer = await prisma.answer.findFirst({
+    where: { id: answerId, question: { homeworkId } },
+    select: { id: true, question: { select: { points: true } } },
+  });
+  if (!answer) notFound();
+
+  // Clamp to the question's own point value, not just >= 0. The grading form
+  // already sets max={question.points}, but that is a client-side hint only.
+  const requested = Math.max(0, Number(formData.get("points")) || 0);
+  const points = Math.min(requested, answer.question.points);
+
   await prisma.answer.update({
-    where: { id: answerId },
+    where: { id: answer.id },
     data: {
       isCorrect: verdict === "correct",
       pointsAwarded: verdict === "correct" ? points : 0,

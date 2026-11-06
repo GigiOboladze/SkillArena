@@ -34,13 +34,24 @@ export function HostClient({
   useEffect(() => {
     const socket = getSocket();
 
-    socket.emit("host:join", { homeworkId }, (ok, err) => {
-      if (!ok) {
-        setError(err ?? "Could not host this session - this browser doesn't have access to it.");
-        return;
-      }
-      setPhase((p) => (p === "connecting" ? "lobby" : p));
-    });
+    // Re-run on every (re)connect, not just once at mount - see the identical
+    // comment in LiveGame.tsx. A host losing wifi for a few seconds mid-class
+    // must not lose control of the game: the reconnected socket is a brand-new
+    // one, so it needs host:join again both to re-enter the `hw:` room and to
+    // have `isHost`/`homeworkId` re-established in socket.data, which every
+    // host:* event now verifies against.
+    const join = () => {
+      socket.emit("host:join", { homeworkId }, (ok, err) => {
+        if (!ok) {
+          setError(err ?? "Could not host this session - this browser doesn't have access to it.");
+          return;
+        }
+        setPhase((p) => (p === "connecting" ? "lobby" : p));
+      });
+    };
+
+    if (socket.connected) join();
+    socket.on("connect", join);
 
     const onLobby = ({ students }: { students: LivePlayer[] }) => setPlayers(students);
     const onQuestion = (q: ClientQuestion) => {
@@ -75,6 +86,7 @@ export function HostClient({
     socket.on("answer:count", onCount);
 
     return () => {
+      socket.off("connect", join);
       socket.off("lobby:update", onLobby);
       socket.off("phase:question", onQuestion);
       socket.off("phase:reveal", onReveal);

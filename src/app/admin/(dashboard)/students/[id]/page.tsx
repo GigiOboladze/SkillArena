@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentAdmin } from "@/lib/session";
 import { listPrograms } from "@/lib/programs";
+import { readPasswordFlash } from "@/lib/password-flash";
 import { setStudentPassword, changeStudentProgram } from "../actions";
 import { SetPasswordForm } from "../SetPasswordForm";
 import { ChangeProgramForm } from "../ChangeProgramForm";
@@ -29,7 +30,9 @@ export default async function StudentPerformancePage({
   const search = await searchParams;
   const justUpdated = search?.updated === "1";
   const programChanged = search?.programChanged === "1";
-  const revealedPassword = typeof search?.password === "string" ? search.password : null;
+  // Retrieved from a short-lived server-side store via an opaque token - the
+  // password itself never travels in the URL. See src/lib/password-flash.ts.
+  const revealedPassword = readPasswordFlash(typeof search?.pw === "string" ? search.pw : null);
   const pwError = typeof search?.pwerror === "string" ? PASSWORD_ERROR_MESSAGES[search.pwerror] ?? null : null;
 
   const student = await prisma.user.findFirst({

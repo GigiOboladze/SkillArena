@@ -30,6 +30,13 @@ export function HootHostClient({
   const [reveal, setReveal] = useState<HootAdminRevealPayload | null>(null);
   const [board, setBoard] = useState<HootHostLeaderboardPayload | null>(null);
   const [answeredCount, setAnsweredCount] = useState(0);
+  // The authoritative player count for the current round, as reported by the
+  // server alongside each answer. `players` above only tracks lobby:update,
+  // which the server deliberately stops broadcasting once the game leaves
+  // LOBBY - so using players.length mid-question showed a stale lobby
+  // snapshot that disagreed with the reveal screen whenever someone joined
+  // late. This follows the server's own `totalPlayers` instead.
+  const [roundTotalPlayers, setRoundTotalPlayers] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,7 +59,10 @@ export function HootHostClient({
     if (socket.connected) join();
     socket.on("connect", join);
 
-    const onLobby = ({ players }: { players: HootLobbyPlayer[] }) => setPlayers(players);
+    const onLobby = ({ players }: { players: HootLobbyPlayer[] }) => {
+      setPlayers(players);
+      setRoundTotalPlayers(players.length);
+    };
     const onQuestion = (q: HootClientQuestion) => {
       setQuestion(q);
       setReveal(null);
@@ -71,7 +81,10 @@ export function HootHostClient({
       setBoard(payload);
       setPhase("finished");
     };
-    const onCount = ({ answered }: { answered: number; total: number }) => setAnsweredCount(answered);
+    const onCount = ({ answered, total }: { answered: number; total: number }) => {
+      setAnsweredCount(answered);
+      setRoundTotalPlayers(total);
+    };
 
     socket.on("lobby:update", onLobby);
     socket.on("phase:question", onQuestion);
@@ -174,7 +187,7 @@ export function HootHostClient({
           <h2 className="mt-2 max-w-xl text-2xl font-bold">{question.text}</h2>
           <p className={`mt-4 text-3xl font-black ${timeLeft <= 5 ? "text-rahoot-red" : ""}`}>{timeLeft}s</p>
           <p className="mt-2 text-rahoot-muted">
-            {answeredCount}/{players.length} answered
+            {answeredCount}/{roundTotalPlayers} answered
           </p>
           <button onClick={next} className="btn btn-primary mt-8">
             {nextLabel}

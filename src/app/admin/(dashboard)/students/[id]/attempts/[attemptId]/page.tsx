@@ -1,11 +1,27 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { getCurrentAdmin } from "@/lib/session";
 
 export default async function StudentAttemptAnswersPage({
   params,
 }: PageProps<"/admin/students/[id]/attempts/[attemptId]">) {
+  const admin = await getCurrentAdmin();
+  if (!admin) notFound();
+
   const { id, attemptId } = await params;
+
+  // Program ownership check, matching every sibling student page (see
+  // students/[id]/page.tsx:51 and students/[id]/edit/page.tsx). The
+  // (dashboard) layout only proves "some admin is logged in", not which
+  // program they belong to - without this a regular Admin could read another
+  // program's student's full answer sheet by visiting this URL directly.
+  const student = await prisma.user.findFirst({
+    where: { id, role: "STUDENT" },
+    select: { programId: true },
+  });
+  if (!student) notFound();
+  if (admin.role !== "SUPER_ADMIN" && student.programId !== admin.programId) notFound();
 
   const attempt = await prisma.quizAttempt.findFirst({
     // Scoped to this student too, not just the attempt id - an admin

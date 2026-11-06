@@ -15,10 +15,6 @@ const MIN_GROUP_COUNT = 1;
 const MAX_GROUP_COUNT = 10;
 const DEFAULT_GROUP_COUNT = 3;
 
-// Roman numerals for up to MAX_GROUP_COUNT groups - a lookup table rather
-// than a general converter, since group counts are always small in
-// practice. Group names are "Group <numeral>", matching the existing
-// I/II/III convention exactly.
 const ROMAN_NUMERALS = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 
 export async function createProgram(formData: FormData) {
@@ -43,12 +39,7 @@ export async function createProgram(formData: FormData) {
   redirect("/admin/programs?created=1");
 }
 
-/**
- * Adding a subject always creates its fixed groups (I, II, ... up to the
- * PROGRAM's own groupCount - see Program's schema comment, this is
- * per-program, not a global constant) in the same transaction - a subject
- * with no groups would be unusable for targeting or assignment.
- */
+
 export async function createSubject(programId: string, formData: FormData) {
   await requireSuperAdmin();
 

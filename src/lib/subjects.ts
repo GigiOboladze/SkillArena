@@ -10,23 +10,6 @@ export async function listSubjectsWithGroups(programId: string) {
   });
 }
 
-export async function getSubjectWithGroups(subjectId: string) {
-  return prisma.subject.findUnique({
-    where: { id: subjectId },
-    include: { groups: { orderBy: { order: "asc" } } },
-  });
-}
-
-export type StudentMembership = Awaited<ReturnType<typeof getStudentMemberships>>[number];
-
-export async function getStudentMemberships(studentId: string) {
-  return prisma.studentSubjectGroup.findMany({
-    where: { studentId },
-    include: { subject: true, group: true },
-    orderBy: { subject: { order: "asc" } },
-  });
-}
-
 /**
  * A Prisma where-fragment for `Homework.findMany` matching every QUIZ-mode
  * homework this student is eligible to see: `Student.group ∈ Quiz.TargetGroups`

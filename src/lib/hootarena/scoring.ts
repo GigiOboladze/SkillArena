@@ -54,8 +54,9 @@ export function computeHootPoints(params: {
  * set", just with different cardinality of the correct set). An empty
  * selection is never correct, even if a question were somehow configured
  * with zero correct options (that configuration is itself rejected at
- * question-creation time - see hootarena/questions.ts - this is defense in
- * depth against it ever mattering at scoring time).
+ * question-creation time by parseHootQuestionForm in
+ * src/app/admin/(dashboard)/hootarena/actions.ts - this is defense in depth
+ * against it ever mattering at scoring time).
  *
  * Per-project decision (documented for the multiple-choice case in the spec
  * this feature was built against): partial credit is never awarded. Any

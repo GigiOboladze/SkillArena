@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentAdmin } from "@/lib/session";
 import { hashPassword } from "@/lib/password";
 import { listSubjectsWithGroups } from "@/lib/subjects";
+import { putPasswordFlash } from "@/lib/password-flash";
 import type { User } from "@/generated/prisma/client";
 
 async function requireAdmin() {
@@ -101,7 +102,7 @@ export async function createStudent(programId: string, formData: FormData) {
 
   revalidatePath("/admin/students");
   redirect(
-    `/admin/students?program=${programId}&created=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+    `/admin/students?program=${programId}&created=${encodeURIComponent(username)}&pw=${putPasswordFlash(password)}`
   );
 }
 
@@ -187,7 +188,7 @@ export async function resetStudentPassword(studentId: string) {
 
   revalidatePath("/admin/students");
   redirect(
-    `/admin/students?program=${student.programId}&created=${encodeURIComponent(student.username)}&password=${encodeURIComponent(password)}`
+    `/admin/students?program=${student.programId}&created=${encodeURIComponent(student.username)}&pw=${putPasswordFlash(password)}`
   );
 }
 
@@ -207,7 +208,7 @@ export async function setStudentPassword(studentId: string, formData: FormData) 
     data: { passwordHash, sessionVersion: { increment: 1 } },
   });
 
-  redirect(`/admin/students/${studentId}?password=${encodeURIComponent(password)}`);
+  redirect(`/admin/students/${studentId}?pw=${putPasswordFlash(password)}`);
 }
 
 export async function deleteStudent(studentId: string) {

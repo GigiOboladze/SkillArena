@@ -22,7 +22,10 @@
     "test:e2e:groupcount": "tsx e2e/group-count.mjs",
     "test:e2e:hootarena-scoring": "tsx e2e/hootarena-scoring.mjs",
     "test:e2e:hootarena": "tsx e2e/hootarena.mjs",
-    "test:e2e:hootarena-reconnect": "tsx e2e/hootarena-reconnect.mjs"
+    "test:e2e:hootarena-reconnect": "tsx e2e/hootarena-reconnect.mjs",
+    "test:e2e:security": "tsx e2e/security-regression.mjs",
+    "test:e2e:hootarena-concurrency": "tsx e2e/hootarena-concurrency.mjs",
+    "test:all": "tsx e2e/run-all.mjs"
   },
   "dependencies": {
     "@neon/config": "^1.3.1",

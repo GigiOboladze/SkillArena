@@ -90,14 +90,14 @@ async function run() {
 
   await regularAdmin.goto(`${BASE}/admin/admins`, { waitUntil: "networkidle" });
   await assert(
-    (await regularAdmin.locator("body").innerText()).includes("This page could not be found"),
+    (await regularAdmin.locator("body").innerText()).includes("Not found"),
     "regular admin must be blocked (404) from the admin-management page, not just have the link hidden"
   );
   ok("regular admin is blocked server-side from /admin/admins");
 
   await regularAdmin.goto(`${BASE}/admin/quizzes`, { waitUntil: "networkidle" });
   await assert(
-    !(await regularAdmin.locator("body").innerText()).includes("could not be found"),
+    !(await regularAdmin.locator("body").innerText()).includes("Not found"),
     "regular admin should still access normal admin pages"
   );
   ok("regular admin retains normal admin functionality (quizzes, students, etc.)");

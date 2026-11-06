@@ -7,6 +7,7 @@ import { DeleteStudentButton } from "./DeleteStudentButton";
 import { SubjectGroupFields } from "./SubjectGroupFields";
 import { listSubjectsWithGroups } from "@/lib/subjects";
 import { resolveAdminProgramScope, listPrograms } from "@/lib/programs";
+import { readPasswordFlash } from "@/lib/password-flash";
 import { ProgramSelector } from "@/components/ProgramSelector";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -24,7 +25,9 @@ export default async function AdminStudentsPage({
   const search = await searchParams;
   const error = typeof search?.error === "string" ? ERROR_MESSAGES[search.error] ?? null : null;
   const createdUsername = typeof search?.created === "string" ? search.created : null;
-  const createdPassword = typeof search?.password === "string" ? search.password : null;
+  // Retrieved from a short-lived server-side store via an opaque token - the
+  // password itself never travels in the URL. See src/lib/password-flash.ts.
+  const createdPassword = readPasswordFlash(typeof search?.pw === "string" ? search.pw : null);
   const q = typeof search?.q === "string" ? search.q.trim() : "";
   const subjectId = typeof search?.subject === "string" ? search.subject : "";
   const requestedProgram = typeof search?.program === "string" ? search.program : undefined;
@@ -67,7 +70,7 @@ export default async function AdminStudentsPage({
         <div>
           <h1 className="text-2xl font-bold">Students</h1>
           <p className="mt-1 text-sm text-rahoot-muted">
-            Create accounts here and hand the credentials to your students - there's no public sign-up.
+            Create accounts here and hand the credentials to your students - there&apos;s no public sign-up.
           </p>
         </div>
         {admin.role === "SUPER_ADMIN" && (

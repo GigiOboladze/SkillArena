@@ -15,6 +15,25 @@ async function requireManage(homeworkId: string) {
   if (!(await canManageHomework(homeworkId))) notFound();
 }
 
+/**
+ * Verifies the question actually belongs to the homework the caller was just
+ * authorized for. Authorizing the parent homework is NOT enough on its own: a
+ * server action is an independently invocable endpoint, so without this check a
+ * caller who legitimately manages homework A - including an unregistered public
+ * creator, since homework creation needs no account - could pass any OTHER
+ * homework's questionId and have it edited or deleted under A's authority.
+ * `Question` is shared by LIVE/ASYNC/QUIZ homeworks, so that reached SkillArena
+ * quiz questions too. Mirrors the scoping `submitAsyncAnswer` already does.
+ */
+async function requireQuestionInHomework(homeworkId: string, questionId: string) {
+  const question = await prisma.question.findFirst({
+    where: { id: questionId, homeworkId },
+    select: { id: true },
+  });
+  if (!question) notFound();
+  return question;
+}
+
 export async function updateHomeworkDetails(
   homeworkId: string,
   formData: FormData
@@ -96,12 +115,20 @@ export async function createQuestion(homeworkId: string, formData: FormData) {
     redirect(`/homeworks/${homeworkId}/questions/new?error=${parsed.error}`);
   }
 
-  const count = await prisma.question.count({ where: { homeworkId } });
+  // max(order)+1, not count(): deleting a question in the middle leaves a gap
+  // without renumbering the survivors, so count() would reuse an existing
+  // order and silently produce two questions with the same position.
+  const last = await prisma.question.findFirst({
+    where: { homeworkId },
+    orderBy: { order: "desc" },
+    select: { order: true },
+  });
+  const order = last ? last.order + 1 : 0;
 
   await prisma.question.create({
     data: {
       homeworkId,
-      order: count,
+      order,
       text: parsed.text,
       type: parsed.type,
       points: parsed.points,
@@ -126,6 +153,7 @@ export async function updateQuestion(
   formData: FormData
 ) {
   await requireManage(homeworkId);
+  await requireQuestionInHomework(homeworkId, questionId);
   const parsed = parseQuestionForm(formData);
   if ("error" in parsed) {
     redirect(
@@ -159,6 +187,7 @@ export async function updateQuestion(
 
 export async function deleteQuestion(homeworkId: string, questionId: string) {
   await requireManage(homeworkId);
+  await requireQuestionInHomework(homeworkId, questionId);
   await prisma.question.delete({ where: { id: questionId } });
   revalidatePath(`/homeworks/${homeworkId}`);
   redirect(`/homeworks/${homeworkId}`);

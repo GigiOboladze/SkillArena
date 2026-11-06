@@ -7,13 +7,17 @@
  * stored preference (or JS disabled) renders dark, never a flash of the
  * wrong scheme. See ThemeToggle/ThemeScript for how data-theme gets set.
  *
- * Dark accent: violet-to-blue from the SkillArena mark.
- * Light accent: this project's own pre-SkillArena palette (#f97316 /
- * #ea580c) - the one concrete "classic red" reference in this codebase's
- * history (its own comment: "matches the owl logo"), reused rather than
- * inventing a new red. Token names kept as "rahoot-red" etc. since they're
- * used as utility classes everywhere (bg-rahoot-red, text-rahoot-red...) -
- * only the values change per theme.
+ * Both themes use the SAME violet primary (--rahoot-red, #7c5cff, taken from
+ * the SkillArena mark); what differs between them is the surface/text/border
+ * ramp. The warm orange from this project's pre-SkillArena palette (#f97316,
+ * originally chosen to match the owl logo) is kept in both themes as the
+ * SECONDARY accent --skillarena-accent, reserved for competitive/gamified
+ * highlights (medals, streaks, the timer's warning tier) so an achievement
+ * never reads as a button.
+ *
+ * Token names are kept as "rahoot-red" etc. despite the value now being
+ * violet, because they are used as Tailwind utility classes throughout
+ * (bg-rahoot-red, text-rahoot-red, ...) - only the values change per theme.
  */
 :root {
   --background: #09090f;

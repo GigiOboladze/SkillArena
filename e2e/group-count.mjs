@@ -15,6 +15,16 @@ function ok(name) { results.push({ name, pass: true }); console.log("PASS:", nam
 function fail(name, err) { results.push({ name, pass: false, err: String(err) }); console.log("FAIL:", name, "-", err); }
 async function assert(cond, message) { if (!cond) throw new Error(message); }
 
+/** Polls `check` until it returns true, instead of sleeping a fixed interval and hoping. */
+async function waitFor(check, message, timeoutMs = 20000, intervalMs = 200) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await check()) return;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(`timed out waiting: ${message}`);
+}
+
 const prisma = new PrismaClient();
 const browser = await chromium.launch();
 const main = (p) => p.locator("main");
@@ -110,9 +120,19 @@ async function run() {
   await assert(await groupCheckboxes.count() === 4, `expected 4 target-group checkboxes for a Front-end subject, got ${await groupCheckboxes.count()}`);
   await groupCheckboxes.nth(3).check();
   await main(feAdmin).getByRole("button", { name: "Save subject & groups" }).click();
-  await feAdmin.waitForTimeout(500);
+  // Wait for the targeting write to actually land rather than sleeping a
+  // fixed 500ms: publishing is REJECTED unless at least one target group
+  // exists, so racing ahead here left the quiz in DRAFT and made the
+  // student-visibility assertion below fail intermittently.
+  await waitFor(
+    async () => (await prisma.quizTargetGroup.count({ where: { homeworkId: quizId } })) > 0,
+    "target group was never saved"
+  );
   await main(feAdmin).getByRole("button", { name: "Published", exact: true }).click();
-  await feAdmin.waitForTimeout(800);
+  await waitFor(
+    async () => (await prisma.homework.findUnique({ where: { id: quizId }, select: { status: true } }))?.status === "OPEN",
+    "quiz never reached OPEN status"
+  );
   ok("quiz created and published, targeted at Group IV only");
 
   const feStudent = await studentLogin(feStudentUser, "pass-123456");
@@ -142,7 +162,7 @@ async function run() {
   const otherDashText = await main(otherStudent).innerText();
   await assert(!otherDashText.includes(`Group IV Quiz ${RUN_ID}`), "a Group I student must not see a quiz targeted only at Group IV");
   await otherStudent.goto(`${BASE}/quiz/${quizId}`, { waitUntil: "networkidle" });
-  await assert((await otherStudent.locator("body").innerText()).includes("This page could not be found"), "a Group I student must be blocked server-side from a Group-IV-only quiz via direct URL");
+  await assert((await otherStudent.locator("body").innerText()).includes("Not found"), "a Group I student must be blocked server-side from a Group-IV-only quiz via direct URL");
   ok("Group I student (same subject, wrong group) is excluded from the Group-IV-only quiz, including direct URL");
   await otherStudent.close();
 
@@ -153,15 +173,6 @@ async function run() {
   // silently ignore it (fall through to "not assigned"), not accept it.
   const bogusGroupId = netEnglish.groups[0].id; // a real group id, but for a Networks subject, not JavaScript
   const csrfProbeUser = `e2e-bogus-group-${RUN_ID}`;
-  const feAdminCookies = await feAdmin.context().cookies();
-  const sessionCookie = feAdminCookies.find((c) => c.name === "__session");
-  const formBody = new URLSearchParams({
-    firstName: "Bogus",
-    lastName: "Group",
-    username: csrfProbeUser,
-    password: "pass-123456",
-    [`group_${jsSubject.id}`]: bogusGroupId,
-  });
   // Server Actions require a special encoded POST, which a plain fetch can't
   // forge - so instead verify the same validation path directly: the action
   // only accepts a groupId that appears in THIS subject's own groups list

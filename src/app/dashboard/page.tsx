@@ -41,6 +41,12 @@ export default async function StudentDashboardPage() {
   const attemptByQuiz = new Map(attempts.map((a) => [a.homeworkId, a]));
   const availableQuizzes = publishedQuizzes.filter((q) => !attemptByQuiz.has(q.id));
   const finishedAttempts = attempts.filter((a) => a.status !== "IN_PROGRESS");
+  // A started-but-unsubmitted attempt is excluded from BOTH lists above
+  // (from "available" because an attempt exists, and from "completed" because
+  // it isn't finished), which previously left it with no link anywhere on the
+  // dashboard - a student who closed the tab mid-quiz could only return via a
+  // URL they no longer had. Surfaced explicitly below.
+  const inProgressAttempts = attempts.filter((a) => a.status === "IN_PROGRESS");
 
   const leaderboardEntry = leaderboard.find((e) => e.studentId === student.id);
   const totalScore = leaderboardEntry?.totalScore ?? 0;
@@ -83,6 +89,27 @@ export default async function StudentDashboardPage() {
             </p>
           ))}
         </div>
+      )}
+
+      {inProgressAttempts.length > 0 && (
+        <section>
+          <h2 className="font-bold">Continue where you left off</h2>
+          <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {inProgressAttempts.map((attempt) => (
+              <li key={attempt.id} className="card card-interactive flex flex-col p-5">
+                <span className="badge badge-warning self-start">In progress</span>
+                <p className="mt-2 text-lg font-bold">{attempt.homework.title}</p>
+                <p className="mt-1 text-sm text-rahoot-muted">
+                  You started this quiz but haven&apos;t submitted it yet. Each question&apos;s timer keeps
+                  running, so finish it as soon as you can.
+                </p>
+                <Link href={`/quiz/${attempt.homeworkId}`} className="btn btn-primary mt-4 self-start">
+                  Resume quiz &rarr;
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <section>

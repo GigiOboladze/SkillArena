@@ -9,6 +9,7 @@ export default async function StudentLoginPage({
   const params = await searchParams;
   const from = typeof params?.from === "string" ? params.from : "/dashboard";
   const hasError = params?.error === "invalid";
+  const isThrottled = params?.error === "throttled";
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
@@ -52,6 +53,11 @@ export default async function StudentLoginPage({
           {hasError && (
             <p className="text-sm font-medium text-rahoot-red">
               Incorrect username or password.
+            </p>
+          )}
+          {isThrottled && (
+            <p className="text-sm font-medium text-rahoot-red">
+              Too many login attempts. Please wait a few minutes and try again.
             </p>
           )}
           <button type="submit" className="btn btn-primary mt-2">

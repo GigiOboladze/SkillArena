@@ -139,7 +139,7 @@ async function run() {
   const wrongGroupDash = await main(sWrongGroup).innerText();
   await assert(!wrongGroupDash.includes(`E2E JS Quiz ${RUN_ID}`), "student in a non-matching group should not see the quiz");
   await sWrongGroup.goto(`${BASE}/quiz/${quizId}`, { waitUntil: "networkidle" });
-  await assert((await sWrongGroup.locator("body").innerText()).includes("This page could not be found"), "non-matching group must be blocked server-side, not just hidden from the dashboard");
+  await assert((await sWrongGroup.locator("body").innerText()).includes("Not found"), "non-matching group must be blocked server-side, not just hidden from the dashboard");
   ok("student in a non-matching group is excluded from listing AND blocked on direct URL access");
 
   const sNoGroup = await studentLogin(uNoGroup, "pass-123456");

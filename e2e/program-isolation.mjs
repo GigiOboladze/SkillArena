@@ -103,7 +103,7 @@ async function run() {
   const netStudentRow = await prisma.user.findUniqueOrThrow({ where: { username: netStudentUser } });
   await feAdmin.goto(`${BASE}/admin/students/${netStudentRow.id}`, { waitUntil: "networkidle" });
   const blockedStudentText = await feAdmin.locator("body").innerText();
-  await assert(blockedStudentText.includes("This page could not be found"), "Front-end admin must be 404'd on a Networks student's detail URL");
+  await assert(blockedStudentText.includes("Not found"), "Front-end admin must be 404'd on a Networks student's detail URL");
   ok("direct URL to another program's student detail page is blocked server-side");
 
   // ---------- Cross-program quiz creation, targeting, and student visibility ----------
@@ -125,12 +125,12 @@ async function run() {
   // Networks admin cannot reach the Front-end quiz's manage page directly.
   await netAdmin.goto(`${BASE}/admin/quizzes/${feQuizId}`, { waitUntil: "networkidle" });
   const blockedQuizText = await netAdmin.locator("body").innerText();
-  await assert(blockedQuizText.includes("This page could not be found"), "Networks admin must be 404'd on a Front-end quiz's manage URL");
+  await assert(blockedQuizText.includes("Not found"), "Networks admin must be 404'd on a Front-end quiz's manage URL");
   ok("direct URL to another program's quiz manage page is blocked server-side");
 
   await netAdmin.goto(`${BASE}/admin/quizzes/${feQuizId}/results`, { waitUntil: "networkidle" });
   const blockedResultsText = await netAdmin.locator("body").innerText();
-  await assert(blockedResultsText.includes("This page could not be found"), "Networks admin must be 404'd on a Front-end quiz's results URL");
+  await assert(blockedResultsText.includes("Not found"), "Networks admin must be 404'd on a Front-end quiz's results URL");
   ok("direct URL to another program's quiz results page is blocked server-side");
 
   // Publish the Front-end quiz targeted at Group I, and confirm the Networks student can't see or start it even with a direct URL.
@@ -164,7 +164,7 @@ async function run() {
   const netDashText = await main(netStudent).innerText();
   await assert(!netDashText.includes(`Iso FE Quiz ${RUN_ID}`), "Networks student must not see a Front-end quiz on their dashboard");
   await netStudent.goto(`${BASE}/quiz/${feQuizId}`, { waitUntil: "networkidle" });
-  await assert((await netStudent.locator("body").innerText()).includes("This page could not be found"), "Networks student must be blocked from a Front-end quiz via direct URL even when in 'Group I' of their own program's subject");
+  await assert((await netStudent.locator("body").innerText()).includes("Not found"), "Networks student must be blocked from a Front-end quiz via direct URL even when in 'Group I' of their own program's subject");
   ok("cross-program quiz access is denied even for a student in the matching group NUMBER, because the program itself doesn't match");
   await netStudent.close();
 

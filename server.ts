@@ -72,6 +72,9 @@ type LiveState = {
   // Kept in sync by broadcastLobby() so student:answer doesn't need its own
   // `student.count` round trip on every single answer during a live round.
   totalPlayers: number;
+  // Set once the game finishes, to drop this entry after a grace period (see
+  // FINISHED_STATE_TTL_MS). Cleared if the host restarts the game.
+  cleanupTimer: NodeJS.Timeout | null;
 };
 
 const liveStates = new Map<string, LiveState>();
@@ -89,6 +92,7 @@ function getOrCreateState(homeworkId: string): LiveState {
       lastRevealPayload: null,
       lastFinishedPayload: null,
       totalPlayers: 0,
+      cleanupTimer: null,
     };
     liveStates.set(homeworkId, state);
   }
@@ -132,9 +136,49 @@ type HootGameState = {
   // (there can be more than one - e.g. two admin tabs, or a reconnect that
   // hasn't yet been cleaned up by a disconnect event).
   hostSocketIds: Set<string>;
+  // Set once the game finishes, to drop this entry after a grace period (see
+  // FINISHED_STATE_TTL_MS).
+  cleanupTimer: NodeJS.Timeout | null;
 };
 
 const hootStates = new Map<string, HootGameState>();
+
+// How long a finished game's in-memory state is kept before being dropped.
+//
+// `liveStates` and `hootStates` previously gained an entry per homework/game
+// and never released one, so on a single long-lived instance (which this app
+// must be - see the Dockerfile note) they grew monotonically with every game
+// ever hosted since the last restart, each holding Sets, Maps and cached
+// payloads.
+//
+// Not deleted immediately on finish: a player whose phone reconnects a moment
+// after the host ends the game still needs the final state replayed to them.
+// A grace period keeps that working while making the growth bounded. Timers
+// are unref()'d so they never hold the process open.
+const FINISHED_STATE_TTL_MS = 15 * 60 * 1000;
+
+function scheduleLiveStateCleanup(homeworkId: string) {
+  const state = liveStates.get(homeworkId);
+  if (!state || state.cleanupTimer) return;
+  state.cleanupTimer = setTimeout(() => {
+    const current = liveStates.get(homeworkId);
+    // Only drop it if the game is still finished - a host can restart a
+    // homework, which puts it back in play and must cancel this.
+    if (current && current.phase === "FINISHED") liveStates.delete(homeworkId);
+  }, FINISHED_STATE_TTL_MS);
+  state.cleanupTimer.unref?.();
+}
+
+function scheduleHootStateCleanup(gameId: string) {
+  const state = hootStates.get(gameId);
+  if (!state || state.cleanupTimer) return;
+  state.cleanupTimer = setTimeout(() => {
+    const current = hootStates.get(gameId);
+    if (current && current.status === "FINISHED") hootStates.delete(gameId);
+  }, FINISHED_STATE_TTL_MS);
+  state.cleanupTimer.unref?.();
+}
+
 // Monotonic counter, incremented once per player:join attempt (across every
 // game) - cheap, simple, and all that's needed to tell "which of two
 // concurrent join calls for the same user actually started later" apart
@@ -156,6 +200,7 @@ function getOrCreateHootState(gameId: string): HootGameState {
       playerSockets: new Map(),
       playerJoinSeq: new Map(),
       hostSocketIds: new Set(),
+      cleanupTimer: null,
     };
     hootStates.set(gameId, state);
   }
@@ -351,6 +396,7 @@ app.prepare().then(() => {
     });
 
     io.to(`hw:${homeworkId}`).emit("phase:finished", payload);
+    scheduleLiveStateCleanup(homeworkId);
   }
 
   /** A true do-over: wipes every submitted answer for this homework and resets the live session back to the lobby. */
@@ -368,6 +414,12 @@ app.prepare().then(() => {
     state.currentQuestionPayload = null;
     state.lastRevealPayload = null;
     state.lastFinishedPayload = null;
+    // The game is back in play, so cancel the post-finish cleanup that would
+    // otherwise drop this state from under an active lobby.
+    if (state.cleanupTimer) {
+      clearTimeout(state.cleanupTimer);
+      state.cleanupTimer = null;
+    }
 
     await prisma.homework.update({
       where: { id: homeworkId },
@@ -451,13 +503,25 @@ app.prepare().then(() => {
       }
     });
 
+    // Every host event below must match the specific homework this socket
+    // authenticated as host for via host:join - `isHost` alone is NOT enough.
+    // Anyone can legitimately become a host of their own homework (public
+    // no-login creation, see createHomework), so without this check such a
+    // host could drive, finish or - via host:restart, which deletes every
+    // submitted answer - wipe an arbitrary OTHER homework just by sending its
+    // id. Mirrors the identical guard the HootArena handlers already make, and
+    // the one `student:answer` below already makes.
+    function isHostOf(homeworkId: string): boolean {
+      return socket.data.isHost === true && socket.data.homeworkId === homeworkId;
+    }
+
     socket.on("host:start", ({ homeworkId }) => {
-      if (!socket.data.isHost) return;
+      if (!isHostOf(homeworkId)) return;
       startQuestion(homeworkId, 0).catch((err) => console.error("host:start failed", err));
     });
 
     socket.on("host:next", async ({ homeworkId }) => {
-      if (!socket.data.isHost) return;
+      if (!isHostOf(homeworkId)) return;
       const state = liveStates.get(homeworkId);
       if (!state) return;
       try {
@@ -478,12 +542,12 @@ app.prepare().then(() => {
     });
 
     socket.on("host:end", ({ homeworkId }) => {
-      if (!socket.data.isHost) return;
+      if (!isHostOf(homeworkId)) return;
       finishGame(homeworkId).catch((err) => console.error("host:end failed", err));
     });
 
     socket.on("host:restart", ({ homeworkId }) => {
-      if (!socket.data.isHost) return;
+      if (!isHostOf(homeworkId)) return;
       restartGame(homeworkId).catch((err) => console.error("host:restart failed", err));
     });
 
@@ -552,10 +616,15 @@ app.prepare().then(() => {
   // === HootArena ===
   // A separate Socket.IO namespace - its own connection/room/event space,
   // sharing only this HTTP server and process with the LIVE-mode `io` above.
-  // Authenticated SkillArena Users only (no anonymous Student rows): every
-  // handler re-derives identity/role/program from the signed session cookie
-  // plus a live sessionVersion check against the database, never from
-  // anything the client claims about itself.
+  // Players are ANONYMOUS - no SkillArena account at all. Identity is a
+  // (playerId, clientToken) pair held in the shared session envelope and
+  // re-verified against a real HootPlayer row on every join; there is no
+  // program/group eligibility, because a game is joinable by whoever has the
+  // PIN. The HOST side is account-based: verifyHootAdmin re-derives
+  // identity/role from the signed session cookie plus a live sessionVersion
+  // check against the database, never from anything the client claims.
+  // (This comment previously described the pre-0f1d23d design, in which
+  // players were authenticated Users with program/group targeting.)
   const hoot = io.of("/hootarena") as unknown as import("socket.io").Namespace<
     HootClientToServerEvents,
     HootServerToClientEvents,
@@ -820,6 +889,7 @@ app.prepare().then(() => {
     });
 
     await emitHootLeaderboard(gameId, { final: true });
+    scheduleHootStateCleanup(gameId);
   }
 
   function sendCurrentHootPhaseTo(

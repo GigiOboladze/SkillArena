@@ -42,13 +42,28 @@ export function LiveGame({
   useEffect(() => {
     const socket = getSocket();
 
-    socket.emit("lobby:join", { homeworkId, studentId, clientToken }, (ok, err) => {
-      if (!ok) {
-        setError(err ?? "Could not join this session.");
-        return;
-      }
-      setPhase((p) => (p === "connecting" ? "lobby" : p));
-    });
+    // Re-run on every (re)connect, not just once at mount - socket.io
+    // reconnects transparently after a network blip or tab suspend without a
+    // page reload, handing the server a brand-new socket with none of the old
+    // one's room membership or socket.data. Without re-joining, this client is
+    // silently stranded: it still looks connected locally, but the server no
+    // longer has it in the `hw:` room, so no further phase events arrive and
+    // the student must manually refresh to recover. lobby:join is idempotent
+    // (it re-verifies the same studentId/clientToken and replays the current
+    // phase via sendCurrentPhaseTo), so calling it again is simply "ask the
+    // server for the current authoritative state".
+    const join = () => {
+      socket.emit("lobby:join", { homeworkId, studentId, clientToken }, (ok, err) => {
+        if (!ok) {
+          setError(err ?? "Could not join this session.");
+          return;
+        }
+        setPhase((p) => (p === "connecting" ? "lobby" : p));
+      });
+    };
+
+    if (socket.connected) join();
+    socket.on("connect", join);
 
     const onLobby = ({ students }: { students: LivePlayer[] }) => setPlayers(students);
     const onQuestion = (q: ClientQuestion) => {
@@ -88,6 +103,7 @@ export function LiveGame({
     socket.on("answer:you", onYourResult);
 
     return () => {
+      socket.off("connect", join);
       socket.off("lobby:update", onLobby);
       socket.off("phase:question", onQuestion);
       socket.off("phase:reveal", onReveal);

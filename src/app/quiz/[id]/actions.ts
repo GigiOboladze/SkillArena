@@ -9,6 +9,7 @@ import {
   getAttempt,
   startOrGetAttempt,
   getOrCreateAttemptAnswer,
+  QUIZ_QUESTION_POINTS,
   QUIZ_MAX_TAB_SWITCHES,
   QUIZ_TAB_SWITCH_FAILURE_REASON,
 } from "@/lib/quiz";
@@ -52,6 +53,20 @@ export async function startQuiz(quizId: string) {
 export async function selectAnswer(quizId: string, questionId: string, optionId: string, formData: FormData) {
   void formData;
   const { attempt } = await requireActiveAttempt(quizId);
+
+  // Both ids must really belong to this quiz. A server action is an
+  // independently invocable endpoint, so neither can be taken on trust:
+  // without this, a client could create AttemptAnswer rows pointing at other
+  // quizzes' questions (starting their 100s clocks), and a non-existent
+  // optionId would reach the database as a foreign-key violation and surface
+  // as an unhandled 500. Not score-exploitable either way - submitQuizAttempt
+  // grades against each question's own correct option - but neither value has
+  // any business being written unvalidated.
+  const question = await prisma.question.findFirst({
+    where: { id: questionId, homeworkId: quizId },
+    select: { id: true, options: { where: { id: optionId }, select: { id: true } } },
+  });
+  if (!question || question.options.length === 0) notFound();
 
   const row = await getOrCreateAttemptAnswer(attempt.id, questionId);
   if (Date.now() < row.deadlineAt.getTime()) {
@@ -115,17 +130,28 @@ export async function submitQuizAttempt(quizId: string) {
     const correctOption = question.options.find((o) => o.isCorrect);
     const answer = answerByQuestion.get(question.id);
     const isCorrect = !!answer?.selectedOptionId && answer.selectedOptionId === correctOption?.id;
-    if (isCorrect) score += 1;
+    // Uses the shared constant rather than a literal 1. The value is the same,
+    // but quiz-constants.ts presents itself as the quiz rule configuration, so
+    // a hardcoded literal here meant editing QUIZ_QUESTION_POINTS silently
+    // changed nothing - a trap for whoever tunes the rules next.
+    if (isCorrect) score += QUIZ_QUESTION_POINTS;
     if (answer) {
       updates.push(prisma.attemptAnswer.update({ where: { id: answer.id }, data: { isCorrect } }));
     }
   }
 
+  // `totalQuestions` was snapshotted when the attempt started, but the score
+  // above is computed against the quiz's CURRENT questions - and an admin can
+  // add or remove questions on a published quiz. Re-stamping it here keeps the
+  // stored pair self-consistent, so the result page and dashboard can never
+  // render an impossible score like "5 / 3".
+  const totalQuestions = quiz.questions.length;
+
   await prisma.$transaction([
     ...updates,
     prisma.quizAttempt.update({
       where: { id: attempt.id },
-      data: { status: "COMPLETED", score, completedAt: new Date() },
+      data: { status: "COMPLETED", score, totalQuestions, completedAt: new Date() },
     }),
   ]);
 

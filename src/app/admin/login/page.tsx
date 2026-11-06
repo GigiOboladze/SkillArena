@@ -9,6 +9,7 @@ export default async function AdminLoginPage({
   const params = await searchParams;
   const from = typeof params?.from === "string" ? params.from : "/admin";
   const hasError = params?.error === "invalid";
+  const isThrottled = params?.error === "throttled";
   const passwordChanged = params?.passwordChanged === "1";
 
   return (
@@ -55,6 +56,11 @@ export default async function AdminLoginPage({
           {hasError && (
             <p className="text-sm font-medium text-rahoot-red">
               Incorrect username or password.
+            </p>
+          )}
+          {isThrottled && (
+            <p className="text-sm font-medium text-rahoot-red">
+              Too many login attempts. Please wait a few minutes and try again.
             </p>
           )}
           <button type="submit" className="btn btn-primary mt-2">

@@ -76,7 +76,7 @@ export function SubjectGroupFields({
         })}
       </div>
       <p className="text-xs text-rahoot-muted">
-        A student only sees quizzes for subjects where they have a group assigned. "No group yet" shows the subject
+        A student only sees quizzes for subjects where they have a group assigned. &quot;No group yet&quot; shows the subject
         to the student with a message, but no quizzes.
       </p>
     </div>

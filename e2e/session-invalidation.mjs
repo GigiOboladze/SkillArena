@@ -121,10 +121,17 @@ async function run() {
   await setPwFields.nth(1).fill("admin-reset-pass-999");
   admin.once("dialog", (d) => d.accept());
   await Promise.all([
-    admin.waitForURL((u) => u.searchParams.has("password")),
+    // `pw` is an opaque, short-lived flash token - the password itself is
+    // deliberately no longer placed in the URL (it used to be
+    // `?password=<plaintext>`, which leaked into history and access logs).
+    admin.waitForURL((u) => u.searchParams.has("pw")),
     main(admin).getByRole("button", { name: "Set new password" }).click(),
   ]);
-  ok("admin set a new password for the student from the student detail page");
+  await assert(
+    !admin.url().includes("admin-reset-pass-999"),
+    "the admin-chosen password must never appear in the URL"
+  );
+  ok("admin set a new password for the student from the student detail page (password never exposed in the URL)");
 
   await pageC.goto(`${BASE}/dashboard`, { waitUntil: "networkidle" });
   await assert(pageC.url().startsWith(`${BASE}/login`), `student's existing session must be rejected immediately after an admin-issued password reset, got: ${pageC.url()}`);

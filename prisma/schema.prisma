@@ -488,13 +488,20 @@ model IncoSubmission {
 }
 
 // --- HootArena: live Kahoot-style multiplayer game, fully separate from the
-// ordinary QUIZ system above. Authenticated SkillArena Users join by 6-digit
-// PIN (no nickname, no anonymous Student rows) - identity, program and group
-// eligibility all come from the User's own account, checked server-side.
-// Deliberately reuses Program/Subject/Group/User rather than inventing
-// parallel concepts; a game is scoped to one Subject (so its target groups
-// are real per-subject Group rows, exactly like QuizTargetGroup) and thus
-// transitively to that subject's Program.
+// ordinary QUIZ system above.
+//
+// Players are ANONYMOUS: a self-chosen nickname per game plus a 6-digit PIN
+// (or its QR code), with no SkillArena account and no program/subject/group
+// targeting at all - access control is "whoever the host shares the PIN
+// with", the same trust model as the legacy LIVE homework join flow. The
+// admin side stays fully account-based, anchored on HootGame.hostId.
+//
+// NOTE: this header previously described the ORIGINAL design, in which
+// players were authenticated Users and a game was scoped to one Subject with
+// per-group targeting. Migration 20261006120000_hootarena_anonymous_players
+// dropped HootGame.subjectId and the hoot_target_groups table and replaced
+// HootPlayer.userId with (username, clientToken). The per-model comments
+// below are authoritative.
 
 enum HootGameStatus {
   LOBBY // waiting for host to start; players may join

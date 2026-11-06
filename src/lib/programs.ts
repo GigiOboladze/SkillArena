@@ -6,10 +6,6 @@ export async function listPrograms() {
   return prisma.program.findMany({ orderBy: { order: "asc" } });
 }
 
-export async function getProgram(programId: string) {
-  return prisma.program.findUnique({ where: { id: programId } });
-}
-
 /**
  * The program id an admin's management views should be scoped to. A regular
  * Admin is always scoped to their own assigned program (any `requested` id

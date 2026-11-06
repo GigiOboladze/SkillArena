@@ -22,6 +22,41 @@ async function requireHootGameAccess(admin: User, gameId: string) {
 }
 
 /**
+ * Verifies the question belongs to the game this admin was just authorized
+ * for. requireHootGameAccess only proves "you may manage THIS game" - a server
+ * action is an independently invocable endpoint, so without this a regular
+ * Admin could pass their own gameId together with another admin's questionId
+ * and have it edited or deleted. `moveHootQuestion` is already safe because it
+ * lists by parent; this gives update/delete the same guarantee.
+ */
+async function requireQuestionInGame(gameId: string, questionId: string) {
+  const question = await prisma.hootQuestion.findFirst({
+    where: { id: questionId, gameId },
+    select: { id: true },
+  });
+  if (!question) notFound();
+  return question;
+}
+
+/**
+ * The next free `order` for a new question in this game.
+ *
+ * Deliberately max(order)+1 rather than count(): HootQuestion has a
+ * @@unique([gameId, order]) constraint and deleting a middle question leaves a
+ * gap without renumbering the survivors. With count(), orders {0, 2} (count 2)
+ * would produce another `order: 2` and violate that constraint, surfacing as
+ * an unhandled P2002. max+1 is always free.
+ */
+async function nextQuestionOrder(gameId: string): Promise<number> {
+  const last = await prisma.hootQuestion.findFirst({
+    where: { gameId },
+    orderBy: { order: "desc" },
+    select: { order: true },
+  });
+  return last ? last.order + 1 : 0;
+}
+
+/**
  * Editing (targeting, questions, deletion) is only allowed while the game is
  * still in LOBBY - once it has started, its question set and target
  * audience are locked in for everyone already in the room, matching the
@@ -145,12 +180,12 @@ export async function createHootQuestion(gameId: string, formData: FormData) {
     redirect(`/admin/hootarena/${gameId}/questions/new?error=${parsed.error}`);
   }
 
-  const count = await prisma.hootQuestion.count({ where: { gameId } });
+  const order = await nextQuestionOrder(gameId);
 
   await prisma.hootQuestion.create({
     data: {
       gameId,
-      order: count,
+      order,
       type: parsed.type,
       text: parsed.text,
       options: { create: parsed.options.map((o, i) => ({ text: o.text, isCorrect: o.isCorrect, order: i })) },
@@ -165,6 +200,7 @@ export async function updateHootQuestion(gameId: string, questionId: string, for
   const admin = await requireAdmin();
   const game = await requireHootGameAccess(admin, gameId);
   requireHootGameEditable(game, `/admin/hootarena/${gameId}`);
+  await requireQuestionInGame(gameId, questionId);
 
   const parsed = parseHootQuestionForm(formData);
   if ("error" in parsed) {
@@ -191,6 +227,7 @@ export async function deleteHootQuestion(gameId: string, questionId: string) {
   const admin = await requireAdmin();
   const game = await requireHootGameAccess(admin, gameId);
   requireHootGameEditable(game, `/admin/hootarena/${gameId}`);
+  await requireQuestionInGame(gameId, questionId);
 
   await prisma.hootQuestion.delete({ where: { id: questionId } });
   revalidatePath(`/admin/hootarena/${gameId}`);

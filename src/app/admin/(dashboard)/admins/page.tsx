@@ -14,6 +14,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   taken: "This username is already in use.",
   full: `All ${MAX_ADMINS} admin slots are taken. Remove one before adding another.`,
   program: "Please choose a valid program.",
+  hostedgames:
+    "This admin has hosted HootArena games, which keep their players' results, so the account can't be removed. Delete those games first (or keep the account).",
 };
 
 export default async function AdminManagementPage({
@@ -50,7 +52,11 @@ export default async function AdminManagementPage({
       </div>
 
       {justCreated && <p className="text-sm font-medium text-green-400">Admin account created.</p>}
-      {programChanged && <p className="text-sm font-medium text-green-400">Admin's program updated.</p>}
+      {programChanged && <p className="text-sm font-medium text-green-400">Admin&apos;s program updated.</p>}
+      {/* Shown here, not only inside the create form below - that form is
+          hidden once all slots are full, which would otherwise swallow errors
+          raised by the delete/program actions. */}
+      {error && <p className="text-sm font-medium text-rahoot-red">{error}</p>}
 
       <section>
         <ul className="flex flex-col gap-2">
@@ -117,7 +123,8 @@ export default async function AdminManagementPage({
                 ))}
               </select>
             </label>
-            {error && <p className="text-sm font-medium text-rahoot-red">{error}</p>}
+            {/* The error is rendered once near the top of the page instead, so
+                it is still visible for actions taken when this form is hidden. */}
             <button type="submit" className="btn btn-primary self-start">
               Create admin
             </button>

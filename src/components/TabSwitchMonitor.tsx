@@ -30,12 +30,19 @@ export function TabSwitchMonitor({
   onFailed: () => void;
 }) {
   const [count, setCount] = useState(initialCount);
+  const [syncedTo, setSyncedTo] = useState(initialCount);
   const awayRef = useRef(false);
   const failedRef = useRef(false);
 
-  useEffect(() => {
+  // Re-sync when the server hands down a new count (a fresh page render after
+  // a reported switch). Done DURING render rather than in an effect: this is
+  // React's documented "adjusting state when a prop changes" pattern, and it
+  // avoids the extra render pass a setState-in-effect costs - which here
+  // briefly displayed the stale counter.
+  if (syncedTo !== initialCount) {
+    setSyncedTo(initialCount);
     setCount(initialCount);
-  }, [initialCount]);
+  }
 
   useEffect(() => {
     async function reportDeparture() {

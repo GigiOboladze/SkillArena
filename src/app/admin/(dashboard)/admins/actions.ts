@@ -77,6 +77,17 @@ export async function changeAdminProgram(adminId: string, formData: FormData) {
 export async function deleteAdminAccount(adminId: string) {
   await requireSuperAdmin();
 
+  // HootGame.host is onDelete: Restrict, so deleting an admin who has ever
+  // hosted a HootArena game raises a foreign-key error. There is no error
+  // boundary that could make that readable, so it surfaced as Next's raw
+  // error page. Detect the condition up front and explain it instead - the
+  // games are deliberately NOT cascade-deleted, since they carry other
+  // people's play history.
+  const hostedGames = await prisma.hootGame.count({ where: { hostId: adminId } });
+  if (hostedGames > 0) {
+    redirect("/admin/admins?error=hostedgames");
+  }
+
   // The `role: "ADMIN"` filter (never "SUPER_ADMIN") makes it structurally
   // impossible for this to remove the Super Admin, even if their own id were
   // somehow submitted here - not just a UI omission.

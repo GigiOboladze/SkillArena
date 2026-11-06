@@ -30,6 +30,23 @@ async function requireQuizAccess(admin: User, quizId: string) {
   return quiz;
 }
 
+/**
+ * Verifies the question belongs to the quiz this admin was just authorized
+ * for. requireQuizAccess only proves "you may manage THIS quiz" - a server
+ * action is an independently invocable endpoint, so without this an Admin
+ * could pass their own quizId together with another program's questionId and
+ * have it edited or deleted. `moveQuizQuestion` is already safe because it
+ * lists by parent; this gives the update/delete paths the same guarantee.
+ */
+async function requireQuestionInQuiz(quizId: string, questionId: string) {
+  const question = await prisma.question.findFirst({
+    where: { id: questionId, homeworkId: quizId },
+    select: { id: true },
+  });
+  if (!question) notFound();
+  return question;
+}
+
 export async function createQuiz(programId: string, formData: FormData) {
   const admin = await requireAdmin();
   if (admin.role !== "SUPER_ADMIN" && programId !== admin.programId) {
@@ -170,12 +187,20 @@ export async function createQuizQuestion(quizId: string, formData: FormData) {
     redirect(`/admin/quizzes/${quizId}/questions/new?error=${parsed.error}`);
   }
 
-  const count = await prisma.question.count({ where: { homeworkId: quizId } });
+  // max(order)+1, not count(): deleting a question in the middle leaves a gap
+  // without renumbering the survivors, so count() would reuse an existing
+  // order and silently produce two questions with the same position.
+  const last = await prisma.question.findFirst({
+    where: { homeworkId: quizId },
+    orderBy: { order: "desc" },
+    select: { order: true },
+  });
+  const order = last ? last.order + 1 : 0;
 
   await prisma.question.create({
     data: {
       homeworkId: quizId,
-      order: count,
+      order,
       type: "MULTIPLE_CHOICE",
       text: parsed.text,
       points: 1,
@@ -191,6 +216,7 @@ export async function createQuizQuestion(quizId: string, formData: FormData) {
 export async function updateQuizQuestion(quizId: string, questionId: string, formData: FormData) {
   const admin = await requireAdmin();
   await requireQuizAccess(admin, quizId);
+  await requireQuestionInQuiz(quizId, questionId);
   const parsed = parseQuizQuestionForm(formData);
   if ("error" in parsed) {
     redirect(`/admin/quizzes/${quizId}/questions/${questionId}/edit?error=${parsed.error}`);
@@ -214,6 +240,7 @@ export async function updateQuizQuestion(quizId: string, questionId: string, for
 export async function deleteQuizQuestion(quizId: string, questionId: string) {
   const admin = await requireAdmin();
   const quiz = await requireQuizAccess(admin, quizId);
+  await requireQuestionInQuiz(quizId, questionId);
 
   // A published (OPEN) quiz must never drop to zero questions - see the
   // matching check in setQuizStatus for why: a student who starts a

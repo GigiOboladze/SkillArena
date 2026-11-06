@@ -2,15 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-/**
- * Cosmetic client-side countdown only - the real 100s-per-question deadline
- * lives server-side (AttemptAnswer.deadlineAt) and is what actually decides
- * whether a selection or submission is accepted. This just ticks down from
- * the server-computed `initialRemainingSeconds` and calls `onExpire` once,
- * so the student sees a live clock and moves on automatically when it hits
- * zero - even if this never fires (tab was closed, JS disabled), the server
- * still enforces the deadline independently on the next request.
- */
 export function QuizTimer({
   initialRemainingSeconds,
   onExpire,
@@ -19,10 +10,12 @@ export function QuizTimer({
   onExpire: () => void;
 }) {
   const [seconds, setSeconds] = useState(initialRemainingSeconds);
+  const [syncedTo, setSyncedTo] = useState(initialRemainingSeconds);
 
-  useEffect(() => {
+  if (syncedTo !== initialRemainingSeconds) {
+    setSyncedTo(initialRemainingSeconds);
     setSeconds(initialRemainingSeconds);
-  }, [initialRemainingSeconds]);
+  }
 
   useEffect(() => {
     if (seconds <= 0) {
@@ -34,9 +27,6 @@ export function QuizTimer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seconds]);
 
-  // Three urgency tiers, per the "100-31 normal / 30-11 noticeable / 10-0
-  // strong urgency" design: only the last tier animates, so the countdown
-  // doesn't pulse for the whole last third of every question.
   const critical = seconds <= 10;
   const warning = seconds <= 30 && !critical;
 
