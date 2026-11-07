@@ -2,6 +2,13 @@ import type { CumulativeLeaderboardEntry } from "@/lib/quiz";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
+// On a wide screen the top three are arranged as an actual podium - 2nd, 1st,
+// 3rd - with the winner raised and the three blocks aligned along their base.
+// On a phone that arrangement reads as "the list is out of order", so the
+// reordering is applied only from `sm` up and the column stays 1-2-3.
+const PODIUM_ORDER = ["sm:order-2", "sm:order-1", "sm:order-3"];
+const PODIUM_HEIGHT = ["sm:pt-9 sm:pb-7", "sm:pt-6 sm:pb-5", "sm:pt-4 sm:pb-4"];
+
 export function CumulativeLeaderboard({
   entries,
   currentStudentId,
@@ -19,21 +26,22 @@ export function CumulativeLeaderboard({
   const rest = entries.slice(3);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       {top3.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
           {top3.map((e, i) => (
             <div
               key={e.studentId}
-              className={`card flex flex-col items-center p-5 text-center ${
-                e.studentId === currentStudentId ? "border-rahoot-red" : ""
-              } ${i === 0 ? "sm:-translate-y-2 shadow-[0_0_32px_var(--skillarena-accent-light)]" : ""}`}
+              className={`podium-step ${PODIUM_ORDER[i]} ${PODIUM_HEIGHT[i]} ${i === 0 ? "is-first" : ""} ${
+                e.studentId === currentStudentId ? "is-you" : ""
+              }`}
             >
-              <span className="text-3xl">{MEDALS[i]}</span>
+              <span className="podium-rank">{i + 1}</span>
+              <span className="text-3xl leading-none">{MEDALS[i]}</span>
               <span className="mt-2 font-bold">
                 {e.firstName} {e.lastName}
               </span>
-              <span className="mt-1 text-2xl font-black text-skillarena-accent">{e.totalScore}</span>
+              <span className="podium-score">{e.totalScore.toLocaleString()}</span>
               <span className="text-xs text-rahoot-muted">points</span>
             </div>
           ))}
@@ -45,17 +53,15 @@ export function CumulativeLeaderboard({
           {rest.map((e, i) => (
             <li
               key={e.studentId}
-              className={`card flex items-center justify-between gap-3 p-4 ${
-                e.studentId === currentStudentId ? "border-rahoot-red" : ""
-              }`}
+              className={`ladder-row ${e.studentId === currentStudentId ? "is-you" : ""}`}
             >
-              <div className="flex items-center gap-3">
-                <span className="w-8 text-center text-sm font-bold text-rahoot-muted">#{i + 4}</span>
-                <span className="font-semibold">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="ladder-rank">{i + 4}</span>
+                <span className="truncate font-semibold">
                   {e.firstName} {e.lastName}
                 </span>
               </div>
-              <span className="text-lg font-black">{e.totalScore.toLocaleString()}</span>
+              <span className="ladder-score">{e.totalScore.toLocaleString()}</span>
             </li>
           ))}
         </ol>

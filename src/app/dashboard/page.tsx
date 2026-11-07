@@ -63,18 +63,18 @@ export default async function StudentDashboardPage() {
         {program && <p className="mt-1 text-sm text-rahoot-muted">{program.name}</p>}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:w-fit">
-        <div className="card p-4">
-          <div className="text-xs uppercase tracking-wide text-rahoot-muted">Total points</div>
-          <div className="text-2xl font-black">{totalScore}</div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:w-fit">
+        <div className="stat-tile">
+          <div className="stat-tile-label">Total points</div>
+          <div className="stat-tile-value">{totalScore}</div>
         </div>
-        <div className="card p-4">
-          <div className="text-xs uppercase tracking-wide text-rahoot-muted">Quizzes completed</div>
-          <div className="text-2xl font-black">{completedInProgram}</div>
+        <div className="stat-tile">
+          <div className="stat-tile-label">Quizzes completed</div>
+          <div className="stat-tile-value">{completedInProgram}</div>
         </div>
-        <div className="card p-4">
-          <div className="text-xs uppercase tracking-wide text-rahoot-muted">Current rank</div>
-          <div className="text-2xl font-black">{rank > 0 ? `#${rank}` : "-"}</div>
+        <div className="stat-tile">
+          <div className="stat-tile-label">Current rank</div>
+          <div className="stat-tile-value is-accent">{rank > 0 ? `#${rank}` : "-"}</div>
         </div>
       </div>
 
@@ -93,7 +93,7 @@ export default async function StudentDashboardPage() {
 
       {inProgressAttempts.length > 0 && (
         <section>
-          <h2 className="font-bold">Continue where you left off</h2>
+          <h2 className="section-head">Continue where you left off</h2>
           <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {inProgressAttempts.map((attempt) => (
               <li key={attempt.id} className="card card-interactive flex flex-col p-5">
@@ -113,7 +113,7 @@ export default async function StudentDashboardPage() {
       )}
 
       <section>
-        <h2 className="font-bold">Available quizzes</h2>
+        <h2 className="section-head">Available quizzes</h2>
         {availableQuizzes.length === 0 ? (
           <div className="card mt-3 flex flex-col items-center gap-2 p-10 text-center">
             <span className="text-4xl">💪😈</span>
@@ -145,7 +145,7 @@ export default async function StudentDashboardPage() {
       </section>
 
       <section>
-        <h2 className="font-bold">Completed quizzes</h2>
+        <h2 className="section-head">Completed quizzes</h2>
         {finishedAttempts.length === 0 ? (
           <p className="mt-3 text-rahoot-muted">No completed quizzes yet.</p>
         ) : (

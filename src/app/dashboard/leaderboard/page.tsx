@@ -20,11 +20,15 @@ export default async function StudentLeaderboardPage() {
       </p>
 
       {rank > 0 && (
-        <div className="card mt-4 flex items-center justify-between p-4">
-          <span className="text-sm font-semibold text-rahoot-muted">Your rank</span>
-          <span className="text-xl font-black">#{rank}</span>
-          <span className="text-sm font-semibold text-rahoot-muted">Your total</span>
-          <span className="text-xl font-black text-skillarena-accent">{total} pts</span>
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:w-fit">
+          <div className="stat-tile">
+            <div className="stat-tile-label">Your rank</div>
+            <div className="stat-tile-value">#{rank}</div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-tile-label">Your total</div>
+            <div className="stat-tile-value is-accent">{total}</div>
+          </div>
         </div>
       )}
 

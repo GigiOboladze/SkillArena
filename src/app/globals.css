@@ -441,3 +441,90 @@ a.card:hover,
   color: var(--badge-neutral-text);
   opacity: 0.85;
 }
+
+/* ---------------------------------------------------------------------------
+   Leaderboard podium + ladder.
+
+   The top three used to be three identical cards with the winner nudged up by
+   2px, which did not read as a ranking at all. These give the standings an
+   actual shape: a raised winner flanked by second and third, then a quieter
+   ladder beneath. Orange stays the "standing" colour, consistent with the rule
+   that a medal must never look like a button.
+   --------------------------------------------------------------------------- */
+
+.podium-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1.25rem 1rem;
+  background: var(--rahoot-surface);
+  border: 1px solid var(--rahoot-border);
+  border-radius: 1rem;
+  box-shadow: var(--card-shadow);
+}
+/* The winner is raised and warmed rather than enlarged, so the three blocks
+   keep a common baseline and the row does not jump on hover or reflow. */
+.podium-step.is-first {
+  border-color: var(--skillarena-accent);
+  box-shadow: 0 0 36px var(--skillarena-accent-light), var(--card-shadow);
+}
+/* "You" is marked with the primary violet - a different axis from the medal
+   colours, so being highlighted never reads as having placed. */
+.podium-step.is-you {
+  border-color: var(--rahoot-red);
+}
+.podium-step.is-first.is-you {
+  box-shadow: 0 0 36px var(--rahoot-red-glow), var(--card-shadow);
+}
+.podium-rank {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--rahoot-muted);
+  font-variant-numeric: tabular-nums;
+}
+.podium-score {
+  margin-top: 0.25rem;
+  font-size: 1.75rem;
+  font-weight: 900;
+  line-height: 1.05;
+  color: var(--skillarena-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ranks 4+ - deliberately flatter than the podium so the eye still lands on
+   the top three first. */
+.ladder-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--rahoot-surface);
+  border: 1px solid var(--rahoot-border);
+  border-radius: 0.75rem;
+}
+.ladder-row.is-you {
+  border-color: var(--rahoot-red);
+  background: var(--rahoot-red-light);
+}
+.ladder-rank {
+  flex: none;
+  width: 2rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--rahoot-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ladder-score {
+  flex: none;
+  font-size: 1.0625rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
