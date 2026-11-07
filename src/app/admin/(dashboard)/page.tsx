@@ -69,11 +69,11 @@ export default async function AdminOverviewPage() {
       </div>
 
       <section>
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold">
-            Live sessions <span className="font-normal text-rahoot-muted">(legacy Kahoot-style hosting)</span>
+        <div className="section-head">
+          <h2>
+            Live sessions <span className="normal-case tracking-normal">(legacy Kahoot-style hosting)</span>
           </h2>
-          <Link href="/homeworks/new" className="btn btn-outline !py-2 !px-4 text-sm">
+          <Link href="/homeworks/new" className="btn btn-outline !py-1.5 !px-3 text-xs">
             + New live session
           </Link>
         </div>
@@ -103,9 +103,9 @@ export default async function AdminOverviewPage() {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="card p-4">
-      <div className="text-2xl font-black">{value}</div>
-      <div className="text-xs uppercase tracking-wide text-rahoot-muted">{label}</div>
+    <div className="stat-tile">
+      <div className="stat-tile-label">{label}</div>
+      <div className="stat-tile-value">{value}</div>
     </div>
   );
 }

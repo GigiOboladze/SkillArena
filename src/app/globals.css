@@ -361,3 +361,83 @@ a.card:hover,
   opacity: 0;
   transform: translateY(-130%) rotate(90deg);
 }
+
+/* ---------------------------------------------------------------------------
+   Layout primitives for dashboard-style pages.
+
+   These exist so admin/student pages can lay out a metric row or separate
+   blocks without inventing a new long class string each time - the same
+   reason .btn/.card/.badge already exist. Purely presentational: they add no
+   data and no features, and every one is additive, so nothing that does not
+   opt in changes appearance.
+   --------------------------------------------------------------------------- */
+
+/* A single metric: small muted label above a large value. Used in rows of
+   2-4 via a plain grid. Deliberately quieter than .card - a metric row is
+   reference information, not something to click, so it gets a flatter
+   surface and no hover treatment. */
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--rahoot-surface);
+  border: 1px solid var(--rahoot-border);
+  border-radius: 0.875rem;
+  padding: 0.875rem 1rem;
+}
+.stat-tile-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rahoot-muted);
+}
+.stat-tile-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--rahoot-ink);
+  /* Tabular figures so a row of counts does not jitter as values change. */
+  font-variant-numeric: tabular-nums;
+}
+/* Opt-in emphasis for a metric that is genuinely competitive (a rank, a
+   streak), keeping the established rule that orange means "standing",
+   never "action". */
+.stat-tile-value.is-accent {
+  color: var(--skillarena-accent);
+}
+
+/* Small-caps heading with a hairline, for separating blocks within a page
+   without the weight of another card border. */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.875rem;
+  border-bottom: 1px solid var(--rahoot-border);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rahoot-muted);
+}
+
+/* Quiz/assessment lifecycle chips. These reuse the existing .badge shape and
+   deliberately stay off the success/danger hues: a quiz being Locked or
+   Completed is a state, not a pass/fail outcome, and reusing green/red here
+   would collide with the attempt results shown beside them. */
+.badge-available {
+  background: var(--rahoot-red-light);
+  color: var(--rahoot-red);
+}
+.badge-progress {
+  background: var(--skillarena-accent-light);
+  color: var(--skillarena-accent);
+}
+.badge-locked {
+  background: var(--badge-neutral-bg);
+  color: var(--badge-neutral-text);
+  opacity: 0.85;
+}
