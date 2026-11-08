@@ -43,6 +43,8 @@ async function adminLogin() {
   await page.fill('input[name="username"]', ADMIN_USERNAME);
   await page.fill('input[name="password"]', ADMIN_PASSWORD);
   await Promise.all([page.waitForURL(`${BASE}/admin`), page.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await page.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   return page;
 }
 
@@ -157,7 +159,7 @@ async function run() {
   // ===================================================================
   const pwUser = `e2e-sec-pw-${RUN_ID}`;
   createdUsernames.push(pwUser);
-  await admin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
+  await admin.goto(`${BASE}/admin/students/new`, { waitUntil: "networkidle" });
   await main(admin).locator('input[name="firstName"]').fill("Pw");
   await main(admin).locator('input[name="lastName"]').fill("Flash");
   await main(admin).locator('input[name="username"]').fill(pwUser);
@@ -293,6 +295,8 @@ async function run() {
     await stu.fill('input[name="username"]', inProgress.student.username);
     await stu.fill('input[name="password"]', "e2e-resume-pass-123456");
     await Promise.all([stu.waitForURL(`${BASE}/dashboard`), stu.click('button[type="submit"]')]);
+    // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+    await stu.locator('[aria-busy="true"]').waitFor({ state: "detached" });
     // The dashboard now streams behind a loading.tsx skeleton, so waiting on
     // the URL alone can assert against the placeholder. Wait for real content.
     await main(stu).getByRole("heading", { name: /Welcome back/i }).waitFor({ timeout: 30000 });
@@ -363,6 +367,8 @@ async function run() {
     await ra.fill('input[name="username"]', regularAdmin.username);
     await ra.fill('input[name="password"]', tempPw);
     await Promise.all([ra.waitForURL(`${BASE}/admin`), ra.click('button[type="submit"]')]);
+    // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+    await ra.locator('[aria-busy="true"]').waitFor({ state: "detached" });
 
     const res = await ra.goto(
       `${BASE}/admin/students/${foreignAttempt.studentId}/attempts/${foreignAttempt.id}`,

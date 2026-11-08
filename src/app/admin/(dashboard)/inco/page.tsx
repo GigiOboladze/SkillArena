@@ -42,10 +42,13 @@ export default async function IncoInboxPage({
           <Link
             key={s}
             href={statusFilter === s ? "/admin/inco" : `/admin/inco?status=${s}`}
-            className={`card p-4 text-center hover:border-rahoot-red ${statusFilter === s ? "border-rahoot-red" : ""}`}
+            className={`card min-w-0 p-4 text-center hover:border-rahoot-red ${statusFilter === s ? "border-rahoot-red" : ""}`}
           >
             <div className="text-2xl font-black">{countByStatus[s] ?? 0}</div>
-            <div className="text-xs uppercase tracking-wide text-rahoot-muted">{INCO_STATUS_LABELS[s]}</div>
+            {/* Long Georgian labels ("დასრულებული") must wrap inside a third of a small phone. */}
+            <div className="text-xs uppercase tracking-wide text-rahoot-muted [overflow-wrap:anywhere]">
+              {INCO_STATUS_LABELS[s]}
+            </div>
           </Link>
         ))}
       </div>

@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import {
   adminSessionCookieName,
   verifyAdminToken,
@@ -60,24 +61,35 @@ export async function destroyAdminSession() {
 }
 
 /**
- * Verifies the admin sub-session for the *current request* - both that the
- * JWT is valid/unexpired AND that its embedded sessionVersion still matches
- * the account's current one in the database. That second check is what
- * makes a password change (self-service or admin-issued) sign a session out
- * everywhere, not just in the browser that changed it: every other device's
- * cookie still carries the pre-change version number forever (JWTs can't be
- * edited after issuing), so it stops verifying the moment the DB counter
- * moves. Deliberately hits the database on every call, unlike a plain JWT
- * check - the only way revocation can work for an otherwise-stateless
- * session - but every caller of this function already goes on to touch the
- * database for the action it's guarding, so this is not a new class of cost.
+ * The current admin User row, verified for the *current request* - both that
+ * the JWT is valid/unexpired AND that its embedded sessionVersion still
+ * matches the account's current one in the database. That second check is
+ * what makes a password change (self-service or admin-issued) sign a session
+ * out everywhere, not just in the browser that changed it: every other
+ * device's cookie still carries the pre-change version number forever (JWTs
+ * can't be edited after issuing), so it stops verifying the moment the DB
+ * counter moves.
+ *
+ * Performance: ONE query, not two. This used to fetch `sessionVersion` and
+ * then fetch the same row again in full; both now come from a single read.
+ * Wrapped in React's `cache()`, so within one server render the layout, the
+ * page and any nested component share that one query instead of each
+ * repeating it (this was 4-6 sequential round trips per page). `cache()`
+ * memoizes only inside a React server render; server actions and route
+ * handlers still get a fresh read on every call, so a session change inside
+ * an action can never be answered from a stale value.
  */
-export async function getAdminSession(): Promise<AdminSessionPayload | null> {
+const loadVerifiedAdmin = cache(async (): Promise<User | null> => {
   const session = adminFromEnvelope(await readSessionEnvelope());
   if (!session) return null;
-  const user = await prisma.user.findUnique({ where: { id: session.userId }, select: { sessionVersion: true } });
+  const user = await prisma.user.findUnique({ where: { id: session.userId } });
   if (!user || user.sessionVersion !== session.sv) return null;
-  return { userId: session.userId, username: session.username };
+  return user.role === "ADMIN" || user.role === "SUPER_ADMIN" ? user : null;
+});
+
+export async function getAdminSession(): Promise<AdminSessionPayload | null> {
+  const admin = await loadVerifiedAdmin();
+  return admin ? { userId: admin.id, username: admin.username } : null;
 }
 
 export async function createStudentUserSession(userId: string, username: string, sessionVersion: number) {
@@ -92,29 +104,28 @@ export async function destroyStudentUserSession() {
   await writeSessionEnvelope(envelope);
 }
 
-/** Same sessionVersion check as getAdminSession, for the logged-in-student sub-session. */
-export async function getStudentUserSession(): Promise<StudentUserSessionPayload | null> {
+/** Same sessionVersion check (and the same single cached query) as loadVerifiedAdmin, for the logged-in-student sub-session. */
+const loadVerifiedStudent = cache(async (): Promise<User | null> => {
   const session = studentUserFromEnvelope(await readSessionEnvelope());
   if (!session) return null;
-  const user = await prisma.user.findUnique({ where: { id: session.userId }, select: { sessionVersion: true } });
+  const user = await prisma.user.findUnique({ where: { id: session.userId } });
   if (!user || user.sessionVersion !== session.sv) return null;
-  return { userId: session.userId, username: session.username };
+  return user.role === "STUDENT" ? user : null;
+});
+
+export async function getStudentUserSession(): Promise<StudentUserSessionPayload | null> {
+  const student = await loadVerifiedStudent();
+  return student ? { userId: student.id, username: student.username } : null;
 }
 
 /** Convenience: the full current student User row, or null if not logged in as a student. */
 export async function getCurrentStudent(): Promise<User | null> {
-  const session = await getStudentUserSession();
-  if (!session) return null;
-  const user = await prisma.user.findUnique({ where: { id: session.userId } });
-  return user && user.role === "STUDENT" ? user : null;
+  return loadVerifiedStudent();
 }
 
 /** Convenience: the full current admin User row (either level), or null if not logged in as an admin. */
 export async function getCurrentAdmin(): Promise<User | null> {
-  const session = await getAdminSession();
-  if (!session) return null;
-  const user = await prisma.user.findUnique({ where: { id: session.userId } });
-  return user && (user.role === "ADMIN" || user.role === "SUPER_ADMIN") ? user : null;
+  return loadVerifiedAdmin();
 }
 
 /** Convenience: the full current Super Admin User row, or null if the current admin isn't the Super Admin. */

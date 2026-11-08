@@ -13,6 +13,7 @@
 // Run: npm run test:all
 import "dotenv/config";
 import { spawn } from "node:child_process";
+import { PrismaClient } from "../src/generated/prisma/client.ts";
 
 const SUITES = [
   // label,                     file
@@ -29,6 +30,10 @@ const SUITES = [
   ["hootarena lifecycle", "e2e/hootarena.mjs"],
   ["hootarena reconnect", "e2e/hootarena-reconnect.mjs"],
   ["security regression", "e2e/security-regression.mjs"],
+  ["launch readiness", "e2e/launch-readiness.mjs"],
+  ["student profiles", "e2e/student-profile.mjs"],
+  ["dashboard schedule + news", "e2e/dashboard-schedule-news.mjs"],
+  ["student my profile", "e2e/student-my-profile.mjs"],
 ];
 
 function run(file) {
@@ -56,6 +61,26 @@ for (const [label, file] of SUITES) {
   const passed = tally ? Number(tally[1]) : null;
   const total = tally ? Number(tally[2]) : null;
   summary.push({ label, code, passed, total, seconds });
+}
+
+// Several suites leave their throwaway student accounts behind (each run uses
+// fresh RUN_ID-suffixed usernames, so nothing collides, but rows pile up). Sweep
+// them once at the end so the database stays tidy across repeated runs. Only
+// e2e-prefixed test accounts are touched; the two pre-seeded e2e admins that
+// program-isolation/group-count log in with are kept.
+try {
+  const prisma = new PrismaClient();
+  const { count } = await prisma.user.deleteMany({
+    where: {
+      username: { startsWith: "e2e-", notIn: ["e2e-test-admin", "e2e-net-admin"] },
+      role: { in: ["STUDENT", "ADMIN"] },
+      hootGamesHosted: { none: {} },
+    },
+  });
+  await prisma.$disconnect();
+  console.log(`\nSwept ${count} leftover e2e test account(s).`);
+} catch (err) {
+  console.log("\n(e2e account sweep skipped:", String(err).slice(0, 200), ")");
 }
 
 console.log(`\n${"=".repeat(70)}\n  SUMMARY\n${"=".repeat(70)}`);

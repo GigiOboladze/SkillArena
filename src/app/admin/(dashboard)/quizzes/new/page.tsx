@@ -5,6 +5,7 @@ import { createQuiz } from "../actions";
 import { listSubjectsWithGroups } from "@/lib/subjects";
 import { resolveAdminProgramScope, listPrograms } from "@/lib/programs";
 import { ProgramSelector } from "@/components/ProgramSelector";
+import { IconQuiz } from "@/components/student/Icons";
 
 const ERROR_MESSAGES: Record<string, string> = {
   title: "Please enter a title.",
@@ -33,52 +34,62 @@ export default async function NewQuizPage({
   const createQuizInProgram = createQuiz.bind(null, programId);
 
   return (
-    <div className="mx-auto max-w-lg">
-      <Link href="/admin/quizzes" className="text-sm text-rahoot-red hover:underline">
-        &larr; Back to quizzes
-      </Link>
-      <h1 className="mt-2 text-2xl font-bold">New quiz</h1>
-      <p className="mt-1 text-sm text-rahoot-muted">
-        Give it a name and a subject, then add questions. Nothing is visible to students until you publish it and
-        pick target groups.
-      </p>
-
-      {admin.role === "SUPER_ADMIN" && (
-        <div className="mt-4">
+    <section className="sa-qn">
+      {admin.role === "SUPER_ADMIN" && programs.length > 1 && (
+        <div className="sa-qn-program">
+          <span className="sa-qn-program-icon" aria-hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+              <path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4M13.5 5.5l-3 13" />
+            </svg>
+          </span>
           <ProgramSelector programs={programs} currentProgramId={programId} basePath="/admin/quizzes/new" />
         </div>
       )}
 
-      <form action={createQuizInProgram} className="card mt-6 flex flex-col gap-3 p-6">
-        <label className="text-sm font-semibold">
-          Quiz title
-          <input
-            name="title"
-            required
-            maxLength={120}
-            placeholder="JavaScript Fundamentals - Lecture 4"
-            className="input mt-1"
-            autoFocus
-          />
-        </label>
-        <label className="text-sm font-semibold">
-          Subject
-          <select name="subjectId" required defaultValue="" className="input mt-1">
-            <option value="" disabled>
-              Choose a subject&hellip;
-            </option>
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {error && <p className="text-sm font-medium text-rahoot-red">{error}</p>}
-        <button type="submit" className="btn btn-primary mt-2">
+      <Link href="/admin/quizzes" className="sa-qn-back">
+        &larr; Back to quizzes
+      </Link>
+      <h1 className="sa-qn-title">New quiz</h1>
+
+      <form action={createQuizInProgram} className="sa-qn-card">
+        <div className="sa-qn-grid">
+          <div className="sa-qn-art" aria-hidden>
+            <span className="sa-qn-art-tile">
+              <IconQuiz className="h-14 w-14" />
+            </span>
+          </div>
+          <div className="flex min-w-0 flex-col gap-5">
+            <label className="sa-qn-label">
+              Quiz title
+              <input
+                name="title"
+                required
+                maxLength={120}
+                placeholder="JavaScript Fundamentals - Lecture 4"
+                className="sa-qn-input"
+                autoFocus
+              />
+            </label>
+            <label className="sa-qn-label">
+              Subject
+              <select name="subjectId" required defaultValue="" className="sa-qn-input">
+                <option value="" disabled>
+                  Choose a subject&hellip;
+                </option>
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+        {error && <p className="mt-4 text-sm font-medium text-rahoot-red">{error}</p>}
+        <button type="submit" className="sa-qn-submit">
           Create quiz
         </button>
       </form>
-    </div>
+    </section>
   );
 }

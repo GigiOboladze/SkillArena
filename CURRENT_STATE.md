@@ -1,5 +1,73 @@
 # CURRENT_STATE — SkillArena
 
+## Hands-on pass on Windows localhost — 2026-11-08
+
+Every feature was used by hand on the owner's Windows machine (`npm run dev`, local `prisma dev`
+database) from both sides: admin login/roles, quizzes (create/edit/questions/targeting/results),
+students (create/validation/passwords/delete), HootArena (all three question types, reorder, edit,
+full live game with a player incl. host and player reloads mid-game, timer auto-reveal, join
+errors), legacy self-paced and live homework (join, answer, grade, close, delete), bug reports
+with screenshots, INCO, Admin Management, programs/subjects validation, profile username and
+password changes, leaderboards. Sandbox suites: **241/241** (`npm run test:all`, production build).
+
+| # | Severity | Bug | Fix |
+|---|---|---|---|
+| 1 | 🔴 High (local) | "jest worker encountered 2 child process exceptions" when using the site in dev mode: Next's dev static-paths worker imported `@/lib/prisma`, and the Prisma constructor eagerly loads the native query engine in every worker. | `src/lib/prisma.ts` creates the client lazily (Proxy) on first use. |
+| 2 | 🟠 Medium (local) | Random 500s - P1001 "Can't reach database server" - under bursts of requests. Measured: `prisma dev` serializes queries and instantly resets any connection beyond its 10th; the app's pool was allowed 10. | `start-local-windows.cmd` runs everything with `connection_limit=5&connect_timeout=0&pool_timeout=0` (read from .env, which is not modified). 0 errors since, incl. 50-request bursts. |
+| 3 | 🟠 Medium | Legacy homework questions: points/time limit beyond the Int range (hand-made POST) crashed the action with a 500. | Server clamps to the form's own bounds (1-10000 pts, 5-600 s) and rounds. Grading rounds too. |
+| 4 | 🟡 Low | Legacy self-paced homework kept accepting answers after the teacher closed it (only new joins were blocked); a forged option id from another question was stored as the answer. | `submitAsyncAnswer` requires `OPEN` + `ASYNC` and only stores this question's options; the done page says the homework was closed. |
+| 5 | 🟡 Low | A finished HootArena game's page still said "Live" and showed its PIN/QR. | Shows "Finished", hides the join code, links to the final results. |
+| 6 | 🟡 Low | Tab-switch warnings were swapped: "Final warning" after the 1st switch, the mild warning on the last tolerated one. | Fixed; e2e asserts the sequence. |
+| 7 | 🟢 Low | Mobile overflow at 320-360 px: program selector on the admin leaderboard/quizzes, Georgian INCO status labels. | Selector shrinks/truncates; labels wrap. The responsive sweep now runs at 360 px. |
+
+**Performance (list pages):** the leaderboard row markup was slimmed (CSS-drawn icons, avatar
+gradient in CSS, no `<!-- -->` text separators): 300-row leaderboard **765 KB → 355 KB** HTML,
+render 87 → ~70 ms. Students list forms post the id as a hidden field instead of `.bind()` (no
+per-row serialized action args): 1008 → 826 KB. Pixel-identical (screenshot diff).
+
+Local dev note: a 300+-student page takes ~3 s in dev mode on `prisma dev` (PGlite runs Postgres
+in WebAssembly and serializes queries) - the same page renders in ~100 ms in production.
+
+## Pre-launch pass — 2026-11-07 (supersedes the 2026-10-14 audit below where they disagree)
+
+**Test status: 236/236 checks pass across all 14 e2e suites** (`npm run test:all`), run twice
+back-to-back against a production build with a seeded database, plus the HootArena load test
+(50 concurrent players, 7/7). `npx tsc --noEmit` clean; `npx eslint .` 0 errors (1 expected
+warning, ThemeInitScript). The "e2e suites unverified" limitation below no longer applies.
+
+### Bugs fixed in this pass
+| # | Severity | Bug | Fix |
+|---|---|---|---|
+| 1 | 🔴 High | Editing a quiz question deleted and re-created its options; `selectedOptionId` is `ON DELETE SET NULL`, so every student's saved answer to that question was erased (mid-quiz answers graded as unanswered; finished results showed "Not answered"). Same in the legacy homework editor. | `src/lib/question-options.ts` updates options in place by position. |
+| 2 | 🟠 Medium | HootArena "Move up/down" always failed: a direct order swap violates the non-deferrable `@@unique([gameId, order])`. | Swap through a temporary negative slot. |
+| 3 | 🟠 Medium | Legacy LIVE/ASYNC screens treated SkillArena quizzes as ordinary homeworks: `/join/<quiz code>` worked, and any admin could open `/homeworks/<quizId>` and edit/delete another program's quiz, bypassing program scoping. | `canManageHomework` and the join page/action reject `mode === "QUIZ"`. |
+| 4 | 🟠 Medium | Public `createHomework` cast the submitted `mode` unchecked (could create `QUIZ` rows or crash on an invalid enum); homework create/join were unthrottled (old finding #6). | Mode validated; per-browser rate limits on create (10/h) and join (20/10 min). |
+| 5 | 🟡 Low | A tab-switch report racing a quiz submit could flip a COMPLETED attempt to FAILED (score 0), or a submit could overwrite an auto-fail. | Status changes are conditional on `IN_PROGRESS` (`updateMany`). |
+| 6 | 🟡 Low | Admin quiz list and Admin Management scrolled sideways on phones. | Header/action rows wrap. |
+| 7 | 🟢 Low | Bug-report status update on a deleted report threw P2025; the attachment route read image bytes before checking access. | Clean 404; auth before reading bytes. |
+
+### Performance
+- Session checks: one DB query instead of two, deduplicated per render with React `cache()`
+  (layout + page previously repeated them: 4-6 sequential round trips per page).
+- Cumulative leaderboard summed by Postgres (`groupBy`) instead of loading every attempt row.
+- Quiz eligibility: 1 query instead of 4; independent queries on dashboard, quiz, result and
+  admin pages run in parallel; admin layout counts in parallel.
+- `loading.tsx` skeletons for `/dashboard` and `/admin`, so navigation paints instantly.
+- Geist self-hosted (Latin subset, same size as Google's) - builds no longer depend on Google Fonts.
+- Measured on a 300-student / 7,241-attempt dataset with 2.5 ms each-way DB latency, old vs new
+  side by side: student dashboard 124→90 ms, leaderboards 161→110 / 174→98 ms, quiz pages ~30%
+  faster, admin overview 114→85 ms. Output verified identical (all 314 leaderboard rows).
+- **Production finding:** the live site's database round trips are ~1-3 ms (co-located, good),
+  but every request from Tbilisi spends ~200 ms in network transit (even a static image). Moving
+  the Railway service AND its database to an EU region is the biggest remaining speed lever.
+
+### Still open (product decisions, unchanged)
+Old findings #4 (password change needs no current password) and #5 (question timers start when a
+question is first viewed) are deliberate behaviours awaiting a product decision. Changing which
+option is correct does not re-grade already-submitted attempts.
+
+---
+
 > Audit date **2026-10-14**. Commit `0f1d23d` on `main`. Working tree **clean**,
 > `main` level with `origin/main` (0 ahead, 0 behind). No stashes.
 > No application code, data, dependency or configuration was modified by this audit.

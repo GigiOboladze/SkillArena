@@ -28,6 +28,8 @@ async function run() {
   await superAdmin.fill('input[name="username"]', SUPER_USERNAME);
   await superAdmin.fill('input[name="password"]', SUPER_PASSWORD);
   await Promise.all([superAdmin.waitForURL(`${BASE}/admin`), superAdmin.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await superAdmin.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   ok("super admin login");
 
   const superNavText = await superAdmin.locator("header").innerText();
@@ -63,6 +65,8 @@ async function run() {
   await regularAdmin.fill('input[name="username"]', regularUsername);
   await regularAdmin.fill('input[name="password"]', "adminpass123");
   await Promise.all([regularAdmin.waitForURL(`${BASE}/admin`), regularAdmin.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await regularAdmin.locator('[aria-busy="true"]').waitFor({ state: "detached" });
 
   const regularNavText = await regularAdmin.locator("header").innerText();
   await assert(!regularNavText.includes("INCO"), "regular admin must not see an INCO nav link");
@@ -84,7 +88,7 @@ async function run() {
 
   // ---------- Anonymous submit -> code -> public status check ----------
   const studentUser = `e2e-inco-stu-${RUN_ID}`;
-  await superAdmin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
+  await superAdmin.goto(`${BASE}/admin/students/new`, { waitUntil: "networkidle" });
   await main(superAdmin).locator('input[name="firstName"]').fill("Inco");
   await main(superAdmin).locator('input[name="lastName"]').fill("Tester");
   await main(superAdmin).locator('input[name="username"]').fill(studentUser);
@@ -100,6 +104,8 @@ async function run() {
   await student.fill('input[name="username"]', studentUser);
   await student.fill('input[name="password"]', "pass-123456");
   await Promise.all([student.waitForURL(`${BASE}/dashboard`), student.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await student.locator('[aria-busy="true"]').waitFor({ state: "detached" });
 
   await student.goto(`${BASE}/dashboard/inco`, { waitUntil: "networkidle" });
   const incoPageText = await main(student).innerText();

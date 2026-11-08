@@ -20,13 +20,16 @@ export function ProgramSelector({
   if (programs.length <= 1) return null;
 
   return (
-    <form method="get" action={basePath}>
-      <label className="flex items-center gap-2 text-sm font-semibold">
+    // min-w-0 / max-w-full all the way down so a long program name shrinks
+    // the select (its text truncates) instead of pushing the page sideways
+    // on a narrow phone.
+    <form method="get" action={basePath} className="min-w-0 max-w-full">
+      <label className="flex min-w-0 items-center gap-2 text-sm font-semibold">
         Program
         <select
           name="program"
           defaultValue={currentProgramId}
-          className="input !w-auto !py-1.5"
+          className="input !w-auto min-w-0 max-w-full !py-1.5"
           onChange={(e) => e.currentTarget.form?.requestSubmit()}
         >
           {programs.map((p) => (

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { generateClientToken } from "@/lib/tokens";
 import { setStudentCookie } from "@/lib/student-session";
+import { checkRateLimit, getPublicFormRateLimitKey } from "@/lib/rate-limit";
 
 export async function joinHomework(homeworkId: string, formData: FormData) {
   const firstName = String(formData.get("firstName") || "").trim();
@@ -13,7 +14,9 @@ export async function joinHomework(homeworkId: string, formData: FormData) {
     where: { id: homeworkId },
   });
 
-  if (!homework) {
+  // SkillArena quizzes are taken from the student dashboard, never joined
+  // anonymously through this legacy flow.
+  if (!homework || homework.mode === "QUIZ") {
     redirect("/join?error=empty");
   }
 
@@ -23,6 +26,11 @@ export async function joinHomework(homeworkId: string, formData: FormData) {
 
   if (homework.status !== "OPEN") {
     redirect(`/join/${homework.joinCode}?error=closed`);
+  }
+
+  const rateLimitKey = await getPublicFormRateLimitKey();
+  if (!checkRateLimit(`homework:join:${rateLimitKey}`, 20, 10 * 60 * 1000)) {
+    redirect(`/join/${homework.joinCode}?error=rate`);
   }
 
   const clientToken = generateClientToken();

@@ -7,6 +7,7 @@ import { joinHomework } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   name: "Please enter both your first and last name.",
   closed: "This homework isn't accepting new students right now.",
+  rate: "Too many join attempts from this device. Please wait a few minutes and try again.",
 };
 
 export default async function JoinCodePage({
@@ -21,7 +22,9 @@ export default async function JoinCodePage({
     where: { joinCode: code.toUpperCase() },
   });
 
-  if (!homework) {
+  // SkillArena quizzes share the Homework table (and have join codes) but are
+  // never joinable here - treat them exactly like an unknown code.
+  if (!homework || homework.mode === "QUIZ") {
     return (
       <StatusScreen
         title="Code not found"

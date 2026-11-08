@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentAdmin } from "@/lib/session";
 import { generateJoinCode } from "@/lib/tokens";
+import { saveQuestionWithOptions } from "@/lib/question-options";
 import type { HomeworkStatus, User } from "@/generated/prisma/client";
 
 async function requireAdmin(): Promise<User> {
@@ -222,16 +223,9 @@ export async function updateQuizQuestion(quizId: string, questionId: string, for
     redirect(`/admin/quizzes/${quizId}/questions/${questionId}/edit?error=${parsed.error}`);
   }
 
-  await prisma.$transaction([
-    prisma.option.deleteMany({ where: { questionId } }),
-    prisma.question.update({
-      where: { id: questionId },
-      data: {
-        text: parsed.text,
-        options: { create: parsed.options.map((o, i) => ({ text: o.text, isCorrect: o.isCorrect, order: i })) },
-      },
-    }),
-  ]);
+  // In place, not delete-and-recreate - see saveQuestionWithOptions for why
+  // (students' saved answers reference these option ids).
+  await saveQuestionWithOptions(questionId, { text: parsed.text }, parsed.options);
 
   revalidatePath(`/admin/quizzes/${quizId}`);
   redirect(`/admin/quizzes/${quizId}`);

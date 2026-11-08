@@ -12,7 +12,7 @@ export function AdminProgramForm({
   return (
     <form
       action={action}
-      className="flex items-center gap-2"
+      className="flex min-w-0 flex-wrap items-center gap-2"
       onSubmit={(e) => {
         const select = e.currentTarget.elements.namedItem("programId") as HTMLSelectElement;
         if (select.value === currentProgramId) {
@@ -24,7 +24,7 @@ export function AdminProgramForm({
         }
       }}
     >
-      <select name="programId" defaultValue={currentProgramId ?? ""} className="input !w-auto !py-1.5 text-sm">
+      <select name="programId" defaultValue={currentProgramId ?? ""} className="input !w-auto max-w-full !py-1.5 text-sm">
         {programs.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name}

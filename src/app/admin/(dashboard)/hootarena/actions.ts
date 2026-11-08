@@ -253,9 +253,16 @@ export async function moveHootQuestion(gameId: string, questionId: string, direc
   const a = questions[index];
   const b = questions[swapWith];
 
+  // Three steps through a temporary slot, not a direct two-step swap:
+  // HootQuestion has a non-deferrable @@unique([gameId, order]), which
+  // Postgres checks after every statement - so moving A straight onto B's
+  // order collided with B and failed every Move up / Move down with a P2002.
+  // A negative order can never belong to a real question (max+1 is always >= 0).
+  const parking = -1 - a.order;
   await prisma.$transaction([
-    prisma.hootQuestion.update({ where: { id: a.id }, data: { order: b.order } }),
+    prisma.hootQuestion.update({ where: { id: a.id }, data: { order: parking } }),
     prisma.hootQuestion.update({ where: { id: b.id }, data: { order: a.order } }),
+    prisma.hootQuestion.update({ where: { id: a.id }, data: { order: b.order } }),
   ]);
 
   revalidatePath(`/admin/hootarena/${gameId}`);

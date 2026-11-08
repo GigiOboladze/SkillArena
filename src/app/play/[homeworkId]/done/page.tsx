@@ -18,12 +18,17 @@ export default async function AsyncDonePage({
   });
   const totalScore = answers.reduce((sum, a) => sum + a.pointsAwarded, 0);
   const pendingGrading = answers.filter((a) => a.isCorrect === null).length;
+  // Reached without finishing = the teacher closed the homework mid-way
+  // (submitAsyncAnswer sends students here once it's no longer open).
+  const closedEarly = !student.finishedAt && homework.status !== "OPEN";
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-      <p className="text-sm font-bold uppercase tracking-wide text-rahoot-red">All done!</p>
+      <p className="text-sm font-bold uppercase tracking-wide text-rahoot-red">
+        {closedEarly ? "Homework closed" : "All done!"}
+      </p>
       <h1 className="mt-2 text-2xl font-bold">
-        Nice work, {student.firstName}
+        {closedEarly ? "Your teacher has closed this homework" : <>Nice work, {student.firstName}</>}
       </h1>
       <p className="mt-4 text-lg">
         Your score so far: <span className="font-black">{totalScore.toLocaleString()}</span>

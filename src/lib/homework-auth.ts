@@ -11,15 +11,20 @@ import { getCreatorTokenForHomework } from "@/lib/creator-session";
  * the ones their own browser made.
  */
 export async function canManageHomework(homeworkId: string): Promise<boolean> {
+  const homework = await prisma.homework.findUnique({
+    where: { id: homeworkId },
+    select: { creatorToken: true, mode: true },
+  });
+  // SkillArena quizzes share the Homework table but are NEVER managed through
+  // these legacy LIVE/ASYNC screens: those only ask "is any admin logged in",
+  // which would let a regular Admin edit or delete another program's quiz and
+  // bypass requireQuizAccess's program scoping. Quizzes are managed only under
+  // /admin/quizzes.
+  if (!homework || homework.mode === "QUIZ") return false;
+
   const admin = await getAdminSession();
   if (admin) return true;
 
   const token = await getCreatorTokenForHomework(homeworkId);
-  if (!token) return false;
-
-  const homework = await prisma.homework.findUnique({
-    where: { id: homeworkId },
-    select: { creatorToken: true },
-  });
-  return !!homework && homework.creatorToken === token;
+  return !!token && homework.creatorToken === token;
 }

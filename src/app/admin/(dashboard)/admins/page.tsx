@@ -72,7 +72,7 @@ export default async function AdminManagementPage({
                     {isSuperAdmin ? "Super Admin - all programs" : admin.program?.name ?? "No program"}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   {!isSuperAdmin && (
                     <AdminProgramForm action={changeProgram} programs={programs} currentProgramId={admin.programId} />
                   )}

@@ -5,6 +5,7 @@ import { getCurrentAdmin } from "@/lib/session";
 import { listSubjectsWithGroups } from "@/lib/subjects";
 import { resolveAdminProgramScope, listPrograms } from "@/lib/programs";
 import { ProgramSelector } from "@/components/ProgramSelector";
+import { IconCheck, IconClock, IconPlus, IconQuiz } from "@/components/student/Icons";
 import type { Prisma, HomeworkStatus } from "@/generated/prisma/client";
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -35,7 +36,7 @@ export default async function AdminQuizzesPage({
   if (subjectId) where.subjectId = subjectId;
   if (status) where.status = status as HomeworkStatus;
 
-  const [quizzes, subjects, programs] = await Promise.all([
+  const [quizzes, subjects, programs, statusCounts] = await Promise.all([
     prisma.homework.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -47,32 +48,71 @@ export default async function AdminQuizzesPage({
     }),
     listSubjectsWithGroups(programId),
     admin.role === "SUPER_ADMIN" ? listPrograms() : Promise.resolve([]),
+    // Program-wide totals for the summary cards (independent of the filters below).
+    prisma.homework.groupBy({ by: ["status"], where: { mode: "QUIZ", subject: { programId } }, _count: { _all: true } }),
   ]);
+  const countOf = (s: HomeworkStatus) => statusCounts.find((c) => c.status === s)?._count._all ?? 0;
+  const totalCount = statusCounts.reduce((sum, c) => sum + c._count._all, 0);
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold">Quizzes</h1>
-        <div className="flex items-center gap-3">
+    <div className="flex flex-col gap-6">
+      <h1 className="sr-only">Quizzes</h1>
+
+      {/* ---------------- Summary panel ---------------- */}
+      <section className="sa-qz-hero">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {admin.role === "SUPER_ADMIN" && (
             <ProgramSelector programs={programs} currentProgramId={programId} basePath="/admin/quizzes" />
           )}
-          <Link href={`/admin/quizzes/new?program=${programId}`} className="btn btn-primary">
-            + New quiz
+          <Link href={`/admin/quizzes/new?program=${programId}`} className="sa-qz-new">
+            <IconPlus className="h-5 w-5" />
+            New quiz
           </Link>
         </div>
-      </div>
 
-      <form className="card mt-6 flex flex-wrap gap-3 p-4" method="get">
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="sa-qz-stat">
+            <span className="sa-qz-stat-icon is-violet">
+              <IconQuiz className="h-8 w-8" />
+            </span>
+            <div className="min-w-0">
+              <p className="sa-qz-stat-label">Total Quizzes</p>
+              <p className="sa-qz-stat-value">{totalCount.toLocaleString()}</p>
+            </div>
+          </div>
+          <div className="sa-qz-stat">
+            <span className="sa-qz-stat-icon is-green">
+              <IconCheck className="h-9 w-9" />
+            </span>
+            <div className="min-w-0">
+              <p className="sa-qz-stat-label">Published</p>
+              <p className="sa-qz-stat-value">{countOf("OPEN").toLocaleString()}</p>
+            </div>
+          </div>
+          <div className="sa-qz-stat">
+            <span className="sa-qz-stat-icon is-blue">
+              <IconClock className="h-8 w-8" />
+            </span>
+            <div className="min-w-0">
+              <p className="sa-qz-stat-label">Draft</p>
+              <p className="sa-qz-stat-value">{countOf("DRAFT").toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------- Filters ---------------- */}
+      <form className="flex flex-wrap gap-3" method="get">
         {admin.role === "SUPER_ADMIN" && <input type="hidden" name="program" value={programId} />}
-        <input
-          type="search"
-          name="q"
-          defaultValue={q}
-          placeholder="Search by title&hellip;"
-          className="input flex-1 sm:min-w-[12rem] sm:flex-none"
-        />
-        <select name="subject" defaultValue={subjectId} className="input sm:w-48">
+        <label className="sa-qz-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden className="h-5 w-5 flex-none text-rahoot-muted">
+            <circle cx="11" cy="11" r="6.5" />
+            <path d="m16 16 4 4" />
+          </svg>
+          <span className="sr-only">Search by title</span>
+          <input type="search" name="q" defaultValue={q} placeholder="Search by title&hellip;" />
+        </label>
+        <select name="subject" defaultValue={subjectId} className="sa-qz-select sm:w-48">
           <option value="">All subjects</option>
           {subjects.map((s) => (
             <option key={s.id} value={s.id}>
@@ -80,37 +120,41 @@ export default async function AdminQuizzesPage({
             </option>
           ))}
         </select>
-        <select name="status" defaultValue={status} className="input sm:w-40">
+        <select name="status" defaultValue={status} className="sa-qz-select sm:w-44">
           <option value="">All statuses</option>
           <option value="DRAFT">Draft</option>
           <option value="OPEN">Published</option>
           <option value="CLOSED">Unpublished</option>
         </select>
-        <button type="submit" className="btn btn-outline">
+        <button type="submit" className="sa-qz-filter">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinejoin="round" aria-hidden className="h-5 w-5">
+            <path d="M4 5h16l-6.2 7.4v5.1l-3.6 1.8v-6.9L4 5Z" />
+          </svg>
           Filter
         </button>
       </form>
 
+      {/* ---------------- List ---------------- */}
       {quizzes.length === 0 ? (
-        <p className="mt-8 text-rahoot-muted">
+        <p className="text-rahoot-muted">
           {q || subjectId || status
             ? "No quizzes match those filters."
             : "No quizzes yet. Create your first one - students will see it once you publish it."}
         </p>
       ) : (
-        <ul className="mt-6 flex flex-col gap-3">
+        <ul className="flex flex-col gap-3">
           {quizzes.map((quiz) => {
             const statusInfo = STATUS_LABELS[quiz.status];
             const groupNames = quiz.targetGroups.map((t) => t.group.name.replace(/^Group /, "")).join(", ");
             return (
               <li key={quiz.id}>
-                <Link
-                  href={`/admin/quizzes/${quiz.id}`}
-                  className="card flex items-center justify-between p-4 hover:border-rahoot-red"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold">{quiz.title}</span>
+                <Link href={`/admin/quizzes/${quiz.id}`} className="sa-qz-row">
+                  <span className="sa-qz-row-icon">
+                    <IconQuiz className="h-6 w-6" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span className="sa-qz-title">{quiz.title}</span>
                       <span className={`badge ${statusInfo.className}`}>{statusInfo.label}</span>
                     </div>
                     <p className="mt-1 text-sm text-rahoot-muted">
@@ -120,6 +164,13 @@ export default async function AdminQuizzesPage({
                       {quiz._count.quizAttempts === 1 ? "" : "s"}
                     </p>
                   </div>
+                  <span className="sa-qz-more" aria-hidden>
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                      <circle cx="5.5" cy="12" r="1.7" />
+                      <circle cx="12" cy="12" r="1.7" />
+                      <circle cx="18.5" cy="12" r="1.7" />
+                    </svg>
+                  </span>
                 </Link>
               </li>
             );

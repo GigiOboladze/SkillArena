@@ -30,51 +30,62 @@ export function QuizQuestionForm({
   while (opts.length < 4) opts.push("");
 
   return (
-    <form action={action} className="card flex flex-col gap-4 p-6">
-      <label className="text-sm font-semibold">
+    <form action={action} className="sa-qn-card !mt-6 sa-qq">
+      <label className="sa-qn-label !text-lg">
         Question
         <textarea
           name="text"
           required
           maxLength={500}
-          rows={2}
+          rows={3}
           defaultValue={defaults?.text}
-          className="input mt-1"
+          className="sa-qq-textarea"
           autoFocus
         />
       </label>
 
-      <div className="flex flex-col gap-2">
-        <p className="text-sm font-semibold">
-          Answers <span className="font-normal text-rahoot-muted">- mark the correct one</span>
-        </p>
-        {[1, 2, 3, 4].map((i) => (
-          <label key={i} className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="correct"
-              value={i}
-              required
-              defaultChecked={defaults?.correctIndex === i}
-            />
-            <input
-              type="text"
-              name={`opt${i}`}
-              required
-              maxLength={200}
-              placeholder={`Answer ${i}`}
-              defaultValue={opts[i - 1]}
-              className="input"
-            />
-          </label>
-        ))}
-      </div>
+      <fieldset className="mt-7">
+        <legend className="text-lg font-bold text-rahoot-ink">
+          Answers <span className="font-normal">&ndash; mark the correct one</span>
+        </legend>
+        <div className="mt-4 flex flex-col gap-2">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="sa-qq-row">
+              <input
+                type="text"
+                name={`opt${i}`}
+                required
+                maxLength={200}
+                placeholder={`Answer ${i}`}
+                aria-label={`Answer ${i}`}
+                defaultValue={opts[i - 1]}
+                className="sa-qq-answer"
+              />
+              <label className="sa-qq-correct">
+                <input
+                  type="radio"
+                  name="correct"
+                  value={i}
+                  required
+                  defaultChecked={defaults?.correctIndex === i}
+                  aria-label={`Answer ${i} is correct`}
+                />
+                <svg viewBox="0 0 24 24" fill="none" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 flex-none" aria-hidden>
+                  <circle cx="12" cy="12" r="9.5" className="sa-qq-ring" />
+                  <path d="m8 12.3 2.7 2.7L16.2 9.5" className="sa-qq-tick" />
+                </svg>
+                Correct answer
+              </label>
+            </div>
+          ))}
+        </div>
+      </fieldset>
 
       {error && ERROR_MESSAGES[error] && (
-        <p className="text-sm font-medium text-rahoot-red">{ERROR_MESSAGES[error]}</p>
+        <p className="mt-4 text-sm font-medium text-rahoot-red">{ERROR_MESSAGES[error]}</p>
       )}
 
-      <button type="submit" className="btn btn-primary mt-2">
+      <button type="submit" className="sa-qn-submit !mt-6">
         {submitLabel}
       </button>
     </form>

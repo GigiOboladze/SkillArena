@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { generateJoinCode, generateClientToken } from "@/lib/tokens";
 import { setCreatorCookie } from "@/lib/creator-session";
+import { checkRateLimit, getPublicFormRateLimitKey } from "@/lib/rate-limit";
 
 // Public, no-registration homework creation. Anyone can call this - the
 // only thing that ties the resulting homework back to its creator is the
@@ -13,10 +14,19 @@ import { setCreatorCookie } from "@/lib/creator-session";
 export async function createHomework(formData: FormData) {
   const title = String(formData.get("title") || "").trim();
   const description = String(formData.get("description") || "").trim();
-  const mode = String(formData.get("mode") || "ASYNC") as "LIVE" | "ASYNC";
+  // Only the two public modes are creatable here. The raw value used to be
+  // cast without checking, so a hand-crafted request could create a "QUIZ"
+  // row (SkillArena's admin-only mode) or crash with an invalid enum value.
+  const rawMode = String(formData.get("mode") || "ASYNC");
+  const mode: "LIVE" | "ASYNC" = rawMode === "LIVE" ? "LIVE" : "ASYNC";
 
   if (!title) {
     redirect("/homeworks/new?error=title");
+  }
+
+  const rateLimitKey = await getPublicFormRateLimitKey();
+  if (!checkRateLimit(`homework:create:${rateLimitKey}`, 10, 60 * 60 * 1000)) {
+    redirect("/homeworks/new?error=rate");
   }
 
   // Join codes are short and drawn from a large alphabet - collisions are

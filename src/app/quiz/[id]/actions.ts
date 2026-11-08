@@ -32,10 +32,9 @@ async function requireActiveAttempt(quizId: string) {
 
 export async function startQuiz(quizId: string) {
   const student = await requireStudent();
-  const quiz = await getVisibleQuiz(quizId);
+  const [quiz, existing] = await Promise.all([getVisibleQuiz(quizId), getAttempt(student.id, quizId)]);
   if (!quiz || quiz.status !== "OPEN") notFound();
 
-  const existing = await getAttempt(student.id, quizId);
   if (existing) {
     redirect(existing.status === "IN_PROGRESS" ? `/quiz/${quizId}/q/0` : `/quiz/${quizId}/result`);
   }
@@ -43,7 +42,7 @@ export async function startQuiz(quizId: string) {
   // Re-verified here, not just at the dashboard listing - a student must not
   // be able to start a quiz outside their subject/group eligibility just by
   // knowing (or guessing) its URL.
-  const eligible = await isStudentEligibleForQuiz(student.id, quizId, quiz.subjectId);
+  const eligible = await isStudentEligibleForQuiz(student, quizId, quiz.subjectId);
   if (!eligible) notFound();
 
   await startOrGetAttempt(student.id, quizId, quiz.questions.length);
@@ -92,22 +91,36 @@ export async function reportTabSwitch(quizId: string): Promise<{ tabSwitchCount:
     return { tabSwitchCount: attempt?.tabSwitchCount ?? 0, failed: attempt?.status === "FAILED" };
   }
 
-  const updated = await prisma.quizAttempt.update({
-    where: { id: attempt.id },
-    data: { tabSwitchCount: { increment: 1 }, events: { create: { type: "TAB_HIDDEN" } } },
+  // Conditional on status: between the read above and this write the student
+  // may have submitted (e.g. the switch was reported a moment after clicking
+  // Submit). A plain update would then count a switch against - and on the
+  // 3rd switch FAIL - an attempt that is already COMPLETED, wiping its score.
+  const incremented = await prisma.quizAttempt.updateMany({
+    where: { id: attempt.id, status: "IN_PROGRESS" },
+    data: { tabSwitchCount: { increment: 1 } },
   });
+  const updated = await prisma.quizAttempt.findUniqueOrThrow({ where: { id: attempt.id } });
+  if (incremented.count === 0) {
+    return { tabSwitchCount: updated.tabSwitchCount, failed: updated.status === "FAILED" };
+  }
+  await prisma.quizAttemptEvent.create({ data: { attemptId: attempt.id, type: "TAB_HIDDEN" } });
 
   if (updated.tabSwitchCount > QUIZ_MAX_TAB_SWITCHES) {
-    await prisma.quizAttempt.update({
-      where: { id: attempt.id },
+    const failed = await prisma.quizAttempt.updateMany({
+      where: { id: attempt.id, status: "IN_PROGRESS" },
       data: {
         status: "FAILED",
         score: 0,
         failureReason: QUIZ_TAB_SWITCH_FAILURE_REASON,
         completedAt: new Date(),
-        events: { create: { type: "FAILED" } },
       },
     });
+    if (failed.count === 0) {
+      // Submitted (or failed by a concurrent report) in between - report the real outcome.
+      const current = await prisma.quizAttempt.findUniqueOrThrow({ where: { id: attempt.id } });
+      return { tabSwitchCount: current.tabSwitchCount, failed: current.status === "FAILED" };
+    }
+    await prisma.quizAttemptEvent.create({ data: { attemptId: attempt.id, type: "FAILED" } });
     revalidatePath("/dashboard");
     return { tabSwitchCount: updated.tabSwitchCount, failed: true };
   }
@@ -118,10 +131,12 @@ export async function reportTabSwitch(quizId: string): Promise<{ tabSwitchCount:
 export async function submitQuizAttempt(quizId: string) {
   const { attempt } = await requireActiveAttempt(quizId);
 
-  const quiz = await getVisibleQuiz(quizId);
+  const [quiz, answers] = await Promise.all([
+    getVisibleQuiz(quizId),
+    prisma.attemptAnswer.findMany({ where: { attemptId: attempt.id } }),
+  ]);
   if (!quiz) notFound();
 
-  const answers = await prisma.attemptAnswer.findMany({ where: { attemptId: attempt.id } });
   const answerByQuestion = new Map(answers.map((a) => [a.questionId, a]));
 
   let score = 0;
@@ -147,10 +162,13 @@ export async function submitQuizAttempt(quizId: string) {
   // render an impossible score like "5 / 3".
   const totalQuestions = quiz.questions.length;
 
+  // The status flip is conditional on still being IN_PROGRESS: if the 3rd
+  // tab switch auto-failed this attempt after requireActiveAttempt read it,
+  // the failure must stand rather than be overwritten with a score.
   await prisma.$transaction([
     ...updates,
-    prisma.quizAttempt.update({
-      where: { id: attempt.id },
+    prisma.quizAttempt.updateMany({
+      where: { id: attempt.id, status: "IN_PROGRESS" },
       data: { status: "COMPLETED", score, totalQuestions, completedAt: new Date() },
     }),
   ]);

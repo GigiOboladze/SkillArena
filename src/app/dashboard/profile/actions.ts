@@ -1,6 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { MAX_HOBBIES, parseHobbies, serializeHobbies } from "@/lib/hobbies";
 import { prisma } from "@/lib/prisma";
 import { getCurrentStudent, createStudentUserSession, destroyStudentUserSession } from "@/lib/session";
 import { hashPassword } from "@/lib/password";
@@ -54,4 +56,40 @@ export async function updateStudentPassword(formData: FormData) {
   // afterward rather than silently continuing on the old one.
   await destroyStudentUserSession();
   redirect("/login?passwordChanged=1");
+}
+
+const NAME_MAX = 40;
+
+export async function updateStudentName(formData: FormData) {
+  const student = await requireStudent();
+  const firstName = String(formData.get("firstName") || "").trim().replace(/\s+/g, " ");
+  const lastName = String(formData.get("lastName") || "").trim().replace(/\s+/g, " ");
+  if (!firstName || !lastName || firstName.length > NAME_MAX || lastName.length > NAME_MAX) {
+    redirect("/dashboard/profile?error=name");
+  }
+  await prisma.user.update({ where: { id: student.id }, data: { firstName, lastName } });
+  revalidatePath("/dashboard", "layout");
+  redirect("/dashboard/profile?updated=name");
+}
+
+export async function addStudentHobby(formData: FormData) {
+  const student = await requireStudent();
+  const raw = String(formData.get("hobby") || "").trim();
+  const [hobby] = parseHobbies(raw);
+  if (!hobby) redirect("/dashboard/profile?error=hobby");
+  const current = parseHobbies(student.hobby);
+  if (current.some((h) => h.toLowerCase() === hobby.toLowerCase())) redirect("/dashboard/profile?updated=hobby");
+  if (current.length >= MAX_HOBBIES) redirect("/dashboard/profile?error=hobbyfull");
+  await prisma.user.update({ where: { id: student.id }, data: { hobby: serializeHobbies([...current, hobby]) } });
+  revalidatePath("/dashboard/profile");
+  redirect("/dashboard/profile?updated=hobby");
+}
+
+export async function removeStudentHobby(formData: FormData) {
+  const student = await requireStudent();
+  const target = String(formData.get("hobby") || "").trim().toLowerCase();
+  const next = parseHobbies(student.hobby).filter((h) => h.toLowerCase() !== target);
+  await prisma.user.update({ where: { id: student.id }, data: { hobby: serializeHobbies(next) } });
+  revalidatePath("/dashboard/profile");
+  redirect("/dashboard/profile?hobbies=manage");
 }

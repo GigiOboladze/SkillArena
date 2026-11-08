@@ -34,10 +34,12 @@ async function loginAs(page, user, pass) {
   await page.fill('input[name="username"]', user);
   await page.fill('input[name="password"]', pass);
   await Promise.all([page.waitForURL(`${BASE}/dashboard`), page.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await page.locator('[aria-busy="true"]').waitFor({ state: "detached" });
 }
 
 async function createStudent(admin, username, password) {
-  await admin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
+  await admin.goto(`${BASE}/admin/students/new`, { waitUntil: "networkidle" });
   await main(admin).locator('input[name="firstName"]').fill("Sess");
   await main(admin).locator('input[name="lastName"]').fill("Test");
   await main(admin).locator('input[name="username"]').fill(username);
@@ -54,6 +56,8 @@ async function run() {
   await admin.fill('input[name="username"]', ADMIN_USERNAME);
   await admin.fill('input[name="password"]', ADMIN_PASSWORD);
   await Promise.all([admin.waitForURL(`${BASE}/admin`), admin.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await admin.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   ok("admin login");
 
   // ---------- Scenario 1: student changes their own password (My Profile) ----------
@@ -73,6 +77,7 @@ async function run() {
   ok("logged in on two independent devices with the same account");
 
   await pageB.goto(`${BASE}/dashboard/profile`, { waitUntil: "networkidle" });
+  await main(pageB).locator("summary", { hasText: "Change Password" }).click();
   const pwFields = main(pageB).locator('input[type="password"]');
   await pwFields.nth(0).fill(newPassword);
   await pwFields.nth(1).fill(newPassword);
@@ -116,6 +121,7 @@ async function run() {
     admin.waitForURL(/\/admin\/students\/[a-z0-9]+$/),
     studentRow.locator("a").first().click(),
   ]);
+  await main(admin).locator("summary[aria-label='Student actions']").click();
   const setPwFields = main(admin).locator('input[type="password"]');
   await setPwFields.nth(0).fill("admin-reset-pass-999");
   await setPwFields.nth(1).fill("admin-reset-pass-999");

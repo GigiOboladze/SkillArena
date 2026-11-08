@@ -51,6 +51,8 @@ async function adminLogin() {
   await page.fill('input[name="username"]', ADMIN_USERNAME);
   await page.fill('input[name="password"]', ADMIN_PASSWORD);
   await Promise.all([page.waitForURL(`${BASE}/admin`), page.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await page.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   return page;
 }
 

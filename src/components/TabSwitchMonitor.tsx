@@ -86,15 +86,19 @@ export function TabSwitchMonitor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quizId]);
 
-  const remaining = maxAllowed - count;
+  // `maxAllowed` switches are tolerated; the next one fails the quiz. So the
+  // final warning belongs on the LAST tolerated switch (count === maxAllowed).
+  // This previously tested `maxAllowed - count === 1`, which showed "Final
+  // warning" after the first switch and the milder message after the second -
+  // backwards, at exactly the moment the student most needed the real warning.
   const message =
     count === 0
       ? null
-      : count <= maxAllowed
-        ? remaining === 1
+      : count < maxAllowed
+        ? `Warning: leaving the quiz has been detected.`
+        : count === maxAllowed
           ? `Final warning: one more detected switch will fail this quiz.`
-          : `Warning: leaving the quiz has been detected.`
-        : `This quiz has failed due to excessive tab switching.`;
+          : `This quiz has failed due to excessive tab switching.`;
 
   return (
     <div className="flex flex-col items-end gap-1">

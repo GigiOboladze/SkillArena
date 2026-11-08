@@ -1,6 +1,6 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentAdmin } from "@/lib/session";
@@ -17,10 +17,13 @@ export async function updateBugReportStatus(reportId: string, formData: FormData
   const status = String(formData.get("status") || "");
   if (!VALID_STATUSES.includes(status as BugReportStatus)) return;
 
-  await prisma.bugReport.update({
+  // updateMany + count rather than update: a report deleted in the meantime
+  // (its student was deleted) should 404 cleanly instead of throwing P2025.
+  const { count } = await prisma.bugReport.updateMany({
     where: { id: reportId },
     data: { status: status as BugReportStatus },
   });
+  if (count === 0) notFound();
 
   revalidatePath("/admin/bug-reports");
   revalidatePath(`/admin/bug-reports/${reportId}`);

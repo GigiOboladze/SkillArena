@@ -1,9 +1,16 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentStudent } from "@/lib/session";
-import { Logo } from "@/components/Logo";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { getProgram } from "@/lib/programs";
+import { AppSidebar, type SidebarItem } from "@/components/student/AppSidebar";
 import { logout } from "./actions";
+
+const STUDENT_NAV: SidebarItem[] = [
+  { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: "home", exact: true },
+  { href: "/dashboard/leaderboard", label: "Leaderboard", shortLabel: "Ranks", icon: "trophy" },
+  { href: "/dashboard/bug-reports", label: "Bug Reports", shortLabel: "Bugs", icon: "bug" },
+  { href: "/dashboard/inco", label: "INCO", icon: "message" },
+  { href: "/dashboard/profile", label: "My Profile", shortLabel: "Profile", icon: "user" },
+];
 
 // Second line of defense behind proxy.ts: every server render under the
 // student dashboard/quiz area re-checks the session before touching any data.
@@ -15,40 +22,20 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  // Cached per render (see getProgram) - the dashboard page reads the same row.
+  const program = student.programId ? await getProgram(student.programId) : null;
+
   return (
-    <div className="flex min-h-full flex-1 flex-col">
-      <header className="border-b-4 border-rahoot-red bg-rahoot-surface">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <Logo size={32} variant="mark" priority />
-            <span className="text-lg font-black text-rahoot-ink">SkillArena</span>
-          </Link>
-          <nav className="flex flex-wrap items-center gap-4 text-sm font-semibold">
-            <Link href="/dashboard" className="hover:text-rahoot-red">
-              Dashboard
-            </Link>
-            <Link href="/dashboard/leaderboard" className="hover:text-rahoot-red">
-              Leaderboard
-            </Link>
-            <Link href="/dashboard/bug-reports" className="hover:text-rahoot-red">
-              Bug Reports
-            </Link>
-            <Link href="/dashboard/inco" className="hover:text-rahoot-red">
-              INCO
-            </Link>
-            <Link href="/dashboard/profile" className="hover:text-rahoot-red">
-              My Profile
-            </Link>
-            <form action={logout}>
-              <button type="submit" className="btn btn-outline !py-2 !px-4 text-sm">
-                Log out
-              </button>
-            </form>
-            <ThemeToggle />
-          </nav>
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</main>
+    <div className="sa-shell">
+      <AppSidebar
+        homeHref="/dashboard"
+        items={STUDENT_NAV}
+        userName={`${student.firstName} ${student.lastName}`}
+        userDetail={program?.name ?? null}
+        logoutAction={logout}
+        bottomNav
+      />
+      <main className="sa-main">{children}</main>
     </div>
   );
 }

@@ -22,7 +22,7 @@ export default async function QuizResultsPage({
     include: {
       subject: true,
       quizAttempts: {
-        include: { student: true },
+        include: { student: { select: { id: true, firstName: true, lastName: true, username: true } } },
         orderBy: [{ score: "desc" }, { startedAt: "asc" }],
       },
       _count: { select: { questions: true } },

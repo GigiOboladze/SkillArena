@@ -96,6 +96,22 @@ model User {
   bugReports     BugReport[]
   hootGamesHosted HootGame[] @relation("HootGameHost")
 
+  // Student profile fields an admin maintains over time (all optional - a
+  // student can be created without them and they're filled in later).
+  // communicationSkill: 0.5-5.0 star rating. motivation: 0-100 percent
+  // (75-100 going well, 40-74 medium, 0-39 needs attention).
+  hobby              String?
+  communicationSkill Float?
+  motivation         Int?
+
+  // Activity log ("student journal") written by admins about this student,
+  // and the entries this admin wrote about students.
+  studentNotes  StudentNote[] @relation("StudentNoteSubject")
+  authoredNotes StudentNote[] @relation("StudentNoteAuthor")
+
+  // Weekly class schedule shown on the student dashboard.
+  scheduleEntries ScheduleEntry[]
+
   @@index([programId])
   @@map("users")
 }
@@ -136,6 +152,52 @@ model BugReportAttachment {
 
   @@index([bugReportId])
   @@map("bug_report_attachments")
+}
+
+enum StudentNoteKind {
+  COMMENT
+  PROGRESS
+  ISSUE
+  MOTIVATION
+}
+
+// One entry in a student's activity log: a comment, progress note, reported
+// issue, or an automatic "motivation updated" record. Only admins write or
+// read these - students never see them. The author's name and role label
+// are copied onto the row so the history stays readable even after that
+// admin account is renamed or removed (authorId then becomes null).
+model StudentNote {
+  id        String          @id @default(cuid())
+  studentId String
+  student   User            @relation("StudentNoteSubject", fields: [studentId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?           @relation("StudentNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  authorName String
+  authorRole String
+  kind      StudentNoteKind
+  body      String
+  motivationFrom Int?
+  motivationTo   Int?
+  createdAt DateTime        @default(now())
+
+  attachments StudentNoteAttachment[]
+
+  @@index([studentId, createdAt])
+  @@map("student_notes")
+}
+
+model StudentNoteAttachment {
+  id          String      @id @default(cuid())
+  noteId      String
+  note        StudentNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  fileName    String
+  contentType String
+  fileSize    Int
+  data        Bytes
+  createdAt   DateTime    @default(now())
+
+  @@index([noteId])
+  @@map("student_note_attachments")
 }
 
 // An educational program ("Front-end Development", "Networks", ...). Real,
@@ -640,4 +702,26 @@ model HootResponse {
   @@index([questionId])
   @@index([gameId])
   @@map("hoot_responses")
+}
+
+// One recurring weekly class on a student's schedule ("HTML/CSS, Mon-Thu,
+// 18:00-21:00, N303 Auditory"). days are ISO weekdays: 1 = Monday ... 7 =
+// Sunday. Times are "HH:MM" wall-clock strings (school local time), kept as
+// text because they describe a recurring slot, not an instant.
+model ScheduleEntry {
+  id        String   @id @default(cuid())
+  studentId String
+  student   User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  title     String
+  days      Int[]
+  startTime String
+  endTime   String
+  room      String?
+  tone      String   @default("violet")
+  icon      String   @default("book")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([studentId, sortOrder])
+  @@map("schedule_entries")
 }

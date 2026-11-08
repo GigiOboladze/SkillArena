@@ -41,6 +41,8 @@ async function run() {
   await admin.fill('input[name="username"]', ADMIN_USERNAME);
   await admin.fill('input[name="password"]', ADMIN_PASSWORD);
   await Promise.all([admin.waitForURL(`${BASE}/admin`), admin.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await admin.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   ok("admin login");
 
   // ---------- Cannot publish a quiz with zero questions ----------
@@ -54,8 +56,7 @@ async function run() {
   const quizId = admin.url().split("/").pop();
   ok("created quiz with zero questions");
 
-  await main(admin).locator('input[name="groupIds"]').nth(0).check();
-  await main(admin).getByRole("button", { name: "Save subject & groups" }).click();
+  await Promise.all([admin.waitForResponse((r) => r.request().method() === "POST"), main(admin).locator('input[name="groupIds"]').nth(0).check()]);
   await admin.waitForLoadState("networkidle");
   await Promise.all([
     admin.waitForURL((u) => u.searchParams.get("error") === "publish"),
@@ -67,7 +68,7 @@ async function run() {
 
   // Confirm it's still DRAFT, not visible to students.
   const draftStudentUser = `e2e-guard-stu1-${RUN_ID}`;
-  await admin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
+  await admin.goto(`${BASE}/admin/students/new`, { waitUntil: "networkidle" });
   await main(admin).locator('input[name="firstName"]').fill("Guard");
   await main(admin).locator('input[name="lastName"]').fill("Test");
   await main(admin).locator('input[name="username"]').fill(draftStudentUser);
@@ -82,6 +83,8 @@ async function run() {
   await draftStudent.fill('input[name="username"]', draftStudentUser);
   await draftStudent.fill('input[name="password"]', "pass-123456");
   await Promise.all([draftStudent.waitForURL(`${BASE}/dashboard`), draftStudent.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await draftStudent.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   const dashText = await main(draftStudent).innerText();
   await assert(!dashText.includes(`Guard Test Quiz ${RUN_ID}`), "a still-DRAFT quiz (publish was blocked) must not appear on a student's dashboard");
   ok("quiz correctly remains unpublished and invisible to students after the blocked publish attempt");

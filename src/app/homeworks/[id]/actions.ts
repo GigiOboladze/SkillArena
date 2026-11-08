@@ -4,6 +4,7 @@ import { redirect, notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { canManageHomework } from "@/lib/homework-auth";
+import { saveQuestionWithOptions } from "@/lib/question-options";
 import { getAdminSession } from "@/lib/session";
 import type { HomeworkStatus, QuestionType } from "@/generated/prisma/client";
 
@@ -82,11 +83,29 @@ type QuestionFormValues = {
   options: { text: string; isCorrect: boolean }[];
 };
 
+/**
+ * Whole number within [min, max]; blank/0/non-numeric falls back to the
+ * default. The form's own min/max are only browser hints - a hand-made POST
+ * with e.g. points=99999999999 previously reached the Int column as-is and
+ * crashed the action with a database error (500).
+ */
+function intField(raw: FormDataEntryValue | null, fallback: number, min: number, max: number): number {
+  const n = Number(raw);
+  if (!n || !Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+// Same bounds as QuestionForm's inputs.
+const POINTS_MIN = 1;
+const POINTS_MAX = 10_000;
+const TIME_LIMIT_MIN_SEC = 5;
+const TIME_LIMIT_MAX_SEC = 600;
+
 function parseQuestionForm(formData: FormData): QuestionFormValues | { error: string } {
   const text = String(formData.get("text") || "").trim();
-  const type = String(formData.get("type") || "MULTIPLE_CHOICE") as QuestionType;
-  const points = Math.max(1, Number(formData.get("points")) || 1000);
-  const timeLimitSec = Math.max(5, Number(formData.get("timeLimitSec")) || 20);
+  const type: QuestionType = formData.get("type") === "PARAGRAPH" ? "PARAGRAPH" : "MULTIPLE_CHOICE";
+  const points = intField(formData.get("points"), 1000, POINTS_MIN, POINTS_MAX);
+  const timeLimitSec = intField(formData.get("timeLimitSec"), 20, TIME_LIMIT_MIN_SEC, TIME_LIMIT_MAX_SEC);
 
   if (!text) return { error: "text" };
 
@@ -161,25 +180,13 @@ export async function updateQuestion(
     );
   }
 
-  await prisma.$transaction([
-    prisma.option.deleteMany({ where: { questionId } }),
-    prisma.question.update({
-      where: { id: questionId },
-      data: {
-        text: parsed.text,
-        type: parsed.type,
-        points: parsed.points,
-        timeLimitSec: parsed.timeLimitSec,
-        options: {
-          create: parsed.options.map((o, i) => ({
-            text: o.text,
-            isCorrect: o.isCorrect,
-            order: i,
-          })),
-        },
-      },
-    }),
-  ]);
+  // In place, not delete-and-recreate - see saveQuestionWithOptions for why
+  // (students' saved answers reference these option ids).
+  await saveQuestionWithOptions(
+    questionId,
+    { text: parsed.text, type: parsed.type, points: parsed.points, timeLimitSec: parsed.timeLimitSec },
+    parsed.options,
+  );
 
   revalidatePath(`/homeworks/${homeworkId}`);
   redirect(`/homeworks/${homeworkId}`);

@@ -52,9 +52,16 @@ next-env.d.ts
 # Local dev server/database logs (scratch, never committed)
 prisma-dev.log
 server*.log
+dev-server.log
+local-setup.log
 
 # Security audit working notes — kept local, deliberately not published to the
 # public repo (they contain reproduction steps and a list of accepted risks).
 docs/skillarena-technical-documentation/SECURITY_AUDIT.md
 docs/skillarena-technical-documentation/FIXES_APPLIED_2026-11.md
 docs/skillarena-technical-documentation/INVESTIGATION_PROGRESS.md
+
+# Local-only helper output (never deployed)
+/Claude outputs/
+schema-diff.sql
+deploy-to-railway.log

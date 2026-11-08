@@ -13,11 +13,11 @@ import {
 import { DeleteQuizButton } from "../DeleteQuizButton";
 import { QuizTargetingForm } from "./QuizTargetingForm";
 import { listSubjectsWithGroups } from "@/lib/subjects";
+import { IconPlus, IconUsers } from "@/components/student/Icons";
 
 const STATUS_FLOW: Array<{ value: "DRAFT" | "OPEN" | "CLOSED"; label: string; hint: string }> = [
   { value: "DRAFT", label: "Draft", hint: "Hidden - students can't see or open this quiz yet" },
   { value: "OPEN", label: "Published", hint: "Visible to every student on their dashboard" },
-  { value: "CLOSED", label: "Unpublished", hint: "Hidden again - past results are kept" },
 ];
 
 const TARGETING_ERROR_MESSAGES: Record<string, string> = {
@@ -41,7 +41,7 @@ export default async function ManageQuizPage({
   const quiz = await prisma.homework.findFirst({
     where: { id, mode: "QUIZ" },
     include: {
-      subject: true,
+      subject: { include: { program: { select: { name: true } } } },
       questions: { orderBy: { order: "asc" }, include: { options: { orderBy: { order: "asc" } } } },
       targetGroups: true,
       _count: { select: { quizAttempts: true } },
@@ -59,85 +59,94 @@ export default async function ManageQuizPage({
   const updateTargeting = updateQuizTargeting.bind(null, quiz.id);
   const removeQuiz = deleteQuiz.bind(null, quiz.id);
 
-  return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">{quiz.title}</h1>
-          <p className="mt-1 text-sm text-rahoot-muted">
-            {quiz.questions.length} question{quiz.questions.length === 1 ? "" : "s"} &middot;{" "}
-            {quiz._count.quizAttempts} attempt{quiz._count.quizAttempts === 1 ? "" : "s"}
-          </p>
-        </div>
-        <Link href={`/admin/quizzes/${quiz.id}/results`} className="btn btn-outline">
-          View results
-        </Link>
-      </div>
+  const selectedSubject = subjects.find((sub) => sub.id === quiz.subjectId);
+  const changeSubject = updateTargeting;
 
-      <section className="card p-6">
-        <h2 className="font-bold">Publishing</h2>
-        <div className="mt-4 flex flex-wrap gap-2">
+  return (
+    <section className="sa-qn">
+      {quiz.subject && (
+        <div className="sa-qn-program">
+          <span className="sa-qn-program-icon" aria-hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+              <path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4M13.5 5.5l-3 13" />
+            </svg>
+          </span>
+          <span className="text-sm font-semibold">Program</span>
+          <span className="sa-qd-divider" aria-hidden />
+          <span className="truncate text-sm font-semibold">{quiz.subject.program.name}</span>
+        </div>
+      )}
+
+      <Link href="/admin/quizzes" className="sa-qn-back">
+        &larr; Back to quizzes
+      </Link>
+      <h1 className="sa-qn-title break-words">{quiz.title}</h1>
+      <p className="sa-qd-meta">
+        {quiz.questions.length} question{quiz.questions.length === 1 ? "" : "s"}
+        <span aria-hidden>&bull;</span>
+        {quiz._count.quizAttempts} attempt{quiz._count.quizAttempts === 1 ? "" : "s"}
+      </p>
+
+      {/* ---------------- Status + results ---------------- */}
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
+        <div className="sa-qd-segment" role="group" aria-label="Quiz status">
           {STATUS_FLOW.map((s) => {
-            const active = quiz.status === s.value;
+            // Older quizzes may still be CLOSED ("Unpublished", no longer offered) - they show as Draft.
+            const active = (quiz.status === "CLOSED" ? "DRAFT" : quiz.status) === s.value;
             const action = setQuizStatus.bind(null, quiz.id, s.value);
             return (
               <form action={action} key={s.value}>
-                <button
-                  type="submit"
-                  disabled={active}
-                  title={s.hint}
-                  className={active ? "btn btn-primary" : "btn btn-outline"}
-                >
+                <button type="submit" disabled={active} title={s.hint} className={active ? "is-active" : undefined}>
                   {s.label}
                 </button>
               </form>
             );
           })}
         </div>
-        {targetingError && <p className="mt-3 text-sm font-medium text-rahoot-red">{targetingError}</p>}
-      </section>
+        <Link href={`/admin/quizzes/${quiz.id}/results`} className="sa-qd-outline">
+          View results
+        </Link>
+      </div>
+      {targetingError && <p className="mt-3 text-sm font-medium text-rahoot-red">{targetingError}</p>}
 
-      <section className="card p-6">
-        <h2 className="font-bold">Subject &amp; target groups</h2>
-        <p className="mt-1 text-sm text-rahoot-muted">
-          Only students whose group (for this subject) is checked below will see this quiz.
-        </p>
-        <div className="mt-4">
-          <QuizTargetingForm
-            action={updateTargeting}
-            subjects={subjects}
-            currentSubjectId={quiz.subjectId}
-            currentGroupIds={quiz.targetGroups.map((g) => g.groupId)}
-          />
+      {/* ---------------- Target group ---------------- */}
+      <div className="sa-qd-card mt-5">
+        <div className="flex items-center gap-5">
+          <IconUsers className="h-10 w-10 flex-none text-rahoot-red" />
+          <div>
+            <h2 className="text-lg font-bold">Target Group</h2>
+            <p className="mt-0.5 text-rahoot-muted">Select the target group for this quiz.</p>
+          </div>
         </div>
-      </section>
+        <div className="mt-5">
+          {quiz.subjectId ? (
+            <QuizTargetingForm
+              key={quiz.subjectId}
+              action={updateTargeting}
+              subjectId={quiz.subjectId}
+              groups={selectedSubject?.groups ?? []}
+              currentGroupIds={quiz.targetGroups.map((g) => g.groupId)}
+            />
+          ) : (
+            <p className="text-sm text-rahoot-muted">Choose a subject under Quiz settings first.</p>
+          )}
+        </div>
+      </div>
 
-      <section className="card p-6">
-        <h2 className="font-bold">Details</h2>
-        <form action={updateDetails} className="mt-4 flex flex-col gap-3">
-          <label className="text-sm font-semibold">
-            Title
-            <input name="title" required maxLength={120} defaultValue={quiz.title} className="input mt-1" />
-          </label>
-          {detailsError && <p className="text-sm font-medium text-rahoot-red">Please enter a title.</p>}
-          <button type="submit" className="btn btn-outline self-start">
-            Save details
-          </button>
-        </form>
-      </section>
-
-      <section className="card p-6">
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold">
-            Questions <span className="font-normal text-rahoot-muted">({quiz.questions.length})</span>
+      {/* ---------------- Questions ---------------- */}
+      <div className="sa-qd-card mt-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 className="text-lg font-bold">
+            Questions <span className="text-rahoot-red">({quiz.questions.length})</span>
           </h2>
-          <Link href={`/admin/quizzes/${quiz.id}/questions/new`} className="btn btn-primary">
-            + Add question
+          <Link href={`/admin/quizzes/${quiz.id}/questions/new`} className="sa-qd-primary">
+            <IconPlus className="h-5 w-5" />
+            Add question
           </Link>
         </div>
 
         {quiz.questions.length === 0 ? (
-          <p className="mt-4 text-sm text-rahoot-muted">No questions yet.</p>
+          <p className="mt-2 text-rahoot-muted">No questions yet.</p>
         ) : (
           <ol className="mt-4 flex flex-col gap-2">
             {quiz.questions.map((q, i) => {
@@ -145,7 +154,7 @@ export default async function ManageQuizPage({
               const moveUp = moveQuizQuestion.bind(null, quiz.id, q.id, "up");
               const moveDown = moveQuizQuestion.bind(null, quiz.id, q.id, "down");
               return (
-                <li key={q.id} className="flex items-center justify-between gap-3 rounded-lg border border-rahoot-border p-3">
+                <li key={q.id} className="sa-qd-question">
                   <div className="flex items-center gap-1">
                     <form action={moveUp}>
                       <button
@@ -168,8 +177,8 @@ export default async function ManageQuizPage({
                       </button>
                     </form>
                   </div>
-                  <div className="flex-1">
-                    <p className="font-semibold">
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words font-semibold">
                       {i + 1}. {q.text}
                     </p>
                     <p className="text-xs text-rahoot-muted">
@@ -194,11 +203,47 @@ export default async function ManageQuizPage({
             })}
           </ol>
         )}
-      </section>
+      </div>
 
-      <form action={removeQuiz} className="self-start">
+      {/* ---------------- Rarely-used settings, collapsed so the page matches the design ---------------- */}
+      <details className="sa-qd-settings mt-6" open={detailsError || search?.error === "subject"}>
+        <summary>Quiz settings (title &amp; subject)</summary>
+        <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
+          <form action={updateDetails} className="flex flex-col gap-3">
+            <label className="sa-pg-field">
+              Title
+              <input name="title" required maxLength={120} defaultValue={quiz.title} className="sa-pg-input" />
+            </label>
+            {detailsError && <p className="text-sm font-medium text-rahoot-red">Please enter a title.</p>}
+            <button type="submit" className="sa-qd-outline self-start">
+              Save details
+            </button>
+          </form>
+          <form action={changeSubject} className="flex flex-col gap-3">
+            <label className="sa-pg-field">
+              Subject
+              <select name="subjectId" required defaultValue={quiz.subjectId ?? ""} className="sa-pg-input">
+                <option value="" disabled>
+                  Choose a subject&hellip;
+                </option>
+                {subjects.map((sub) => (
+                  <option key={sub.id} value={sub.id}>
+                    {sub.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="text-xs text-rahoot-muted">Changing the subject clears the selected target groups.</p>
+            <button type="submit" className="sa-qd-outline self-start">
+              Change subject
+            </button>
+          </form>
+        </div>
+      </details>
+
+      <form action={removeQuiz} className="mt-8">
         <DeleteQuizButton title={quiz.title} />
       </form>
-    </div>
+    </section>
   );
 }

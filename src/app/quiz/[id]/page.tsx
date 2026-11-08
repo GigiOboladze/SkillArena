@@ -10,16 +10,15 @@ export default async function QuizStartPage({ params }: PageProps<"/quiz/[id]">)
   const { id } = await params;
   const student = (await getCurrentStudent())!;
 
-  const quiz = await getVisibleQuiz(id);
+  // Independent reads - run together rather than one after the other.
+  const [quiz, attempt] = await Promise.all([getVisibleQuiz(id), getAttempt(student.id, id)]);
   if (!quiz || quiz.status !== "OPEN") notFound();
-
-  const attempt = await getAttempt(student.id, id);
 
   // A student who never had an attempt must currently be eligible to even
   // learn this quiz exists. One who already has an attempt (started while
   // eligible, possibly reassigned since) keeps access to their own result.
   if (!attempt) {
-    const eligible = await isStudentEligibleForQuiz(student.id, id, quiz.subjectId);
+    const eligible = await isStudentEligibleForQuiz(student, id, quiz.subjectId);
     if (!eligible) notFound();
   }
 

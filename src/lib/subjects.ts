@@ -31,14 +31,23 @@ export async function listSubjectsWithGroups(programId: string) {
  * nothing (Prisma's `OR: []` would otherwise match everything, which is the
  * opposite of what we want here).
  */
-export async function eligibleHomeworkWhere(studentId: string): Promise<Prisma.HomeworkWhereInput> {
-  const student = await prisma.user.findUnique({ where: { id: studentId }, select: { programId: true } });
-  if (!student?.programId) {
+export async function eligibleHomeworkWhere(
+  studentId: string,
+  // Callers that already hold the student row pass its programId to skip a
+  // redundant lookup. Must be the student's CURRENT programId (read from their
+  // own row), never a client-supplied value.
+  knownProgramId?: string | null
+): Promise<Prisma.HomeworkWhereInput> {
+  const programId =
+    knownProgramId !== undefined
+      ? knownProgramId
+      : (await prisma.user.findUnique({ where: { id: studentId }, select: { programId: true } }))?.programId;
+  if (!programId) {
     return { id: "__no_program__" };
   }
 
   const memberships = await prisma.studentSubjectGroup.findMany({
-    where: { studentId, groupId: { not: null }, subject: { programId: student.programId } },
+    where: { studentId, groupId: { not: null }, subject: { programId } },
     select: { subjectId: true, groupId: true },
   });
 
@@ -54,29 +63,34 @@ export async function eligibleHomeworkWhere(studentId: string): Promise<Prisma.H
   };
 }
 
-/** Direct eligibility check for one specific homework - used before starting/opening a quiz, not just for listing. */
+/**
+ * Direct eligibility check for one specific homework - used before
+ * starting/opening a quiz, not just for listing. Same three rules as
+ * eligibleHomeworkWhere: the quiz's subject belongs to the student's current
+ * program, the student is assigned to that subject WITH a group, and that
+ * group is one the quiz targets.
+ *
+ * One query: all three conditions are expressed as a single relational filter
+ * on the student's own membership row (previously four round trips, two of
+ * them sequential).
+ */
 export async function isStudentEligibleForQuiz(
-  studentId: string,
+  student: { id: string; programId: string | null },
   homeworkId: string,
   subjectId: string | null
 ): Promise<boolean> {
-  if (!subjectId) return false;
+  if (!subjectId || !student.programId) return false;
 
-  const [student, subject] = await Promise.all([
-    prisma.user.findUnique({ where: { id: studentId }, select: { programId: true } }),
-    prisma.subject.findUnique({ where: { id: subjectId }, select: { programId: true } }),
-  ]);
-  if (!student?.programId || !subject || student.programId !== subject.programId) return false;
-
-  const membership = await prisma.studentSubjectGroup.findUnique({
-    where: { studentId_subjectId: { studentId, subjectId } },
+  const membership = await prisma.studentSubjectGroup.findFirst({
+    where: {
+      studentId: student.id,
+      subjectId,
+      subject: { programId: student.programId },
+      group: { quizTargets: { some: { homeworkId } } },
+    },
+    select: { id: true },
   });
-  if (!membership?.groupId) return false;
-
-  const targeted = await prisma.quizTargetGroup.findUnique({
-    where: { homeworkId_groupId: { homeworkId, groupId: membership.groupId } },
-  });
-  return !!targeted;
+  return !!membership;
 }
 
 /** Subjects this student is assigned to but has no group for yet - shown on the dashboard with a "no group yet" message instead of any quizzes. */

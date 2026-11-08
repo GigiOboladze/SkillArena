@@ -6,7 +6,12 @@ export default async function NewHomeworkPage({
   searchParams,
 }: PageProps<"/homeworks/new">) {
   const params = await searchParams;
-  const hasError = params?.error === "title";
+  const errorMessage =
+    params?.error === "title"
+      ? "Please enter a title."
+      : params?.error === "rate"
+        ? "You've created a lot of homeworks from this device recently. Please wait a while and try again."
+        : null;
 
   return (
     <main className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-6 py-10">
@@ -52,9 +57,7 @@ export default async function NewHomeworkPage({
           </div>
         </fieldset>
 
-        {hasError && (
-          <p className="text-sm font-medium text-rahoot-red">Please enter a title.</p>
-        )}
+        {errorMessage && <p className="text-sm font-medium text-rahoot-red">{errorMessage}</p>}
 
         <button type="submit" className="btn btn-primary mt-2">
           Create homework

@@ -35,7 +35,7 @@ async function run() {
     admin.waitForURL(`${BASE}/admin`),
     admin.click('button[type="submit"]'),
   ]);
-  await assert((await admin.textContent("h1")).includes("Overview"), "expected admin dashboard heading");
+  await assert((await admin.textContent("h1")).includes("Welcome back"), "expected admin dashboard heading");
   ok("admin login redirects to dashboard");
 
   // Wrong password should stay on login with error

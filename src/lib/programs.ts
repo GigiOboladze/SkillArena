@@ -1,10 +1,16 @@
 import "server-only";
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import type { User } from "@/generated/prisma/client";
 
-export async function listPrograms() {
+export const listPrograms = cache(async () => {
   return prisma.program.findMany({ orderBy: { order: "asc" } });
-}
+});
+
+/** One program by id, cached per render so a layout and its page share the lookup. */
+export const getProgram = cache(async (programId: string) => {
+  return prisma.program.findUnique({ where: { id: programId } });
+});
 
 /**
  * The program id an admin's management views should be scoped to. A regular

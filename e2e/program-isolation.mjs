@@ -34,6 +34,8 @@ async function login(creds) {
   await page.fill('input[name="username"]', creds.username);
   await page.fill('input[name="password"]', creds.password);
   await Promise.all([page.waitForURL(`${BASE}/admin`), page.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await page.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   return page;
 }
 
@@ -43,11 +45,13 @@ async function studentLogin(username, password) {
   await page.fill('input[name="username"]', username);
   await page.fill('input[name="password"]', password);
   await Promise.all([page.waitForURL(`${BASE}/dashboard`), page.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await page.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   return page;
 }
 
 async function createStudent(admin, username) {
-  await admin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
+  await admin.goto(`${BASE}/admin/students/new`, { waitUntil: "networkidle" });
   await main(admin).locator('input[name="firstName"]').fill("Iso");
   await main(admin).locator('input[name="lastName"]').fill("Test");
   await main(admin).locator('input[name="username"]').fill(username);
@@ -64,15 +68,14 @@ async function run() {
   const netAdmin = await login(NETWORKS_ADMIN);
   ok("Networks admin login");
 
-  // ---------- Header shows the admin's own program, not the other's ----------
-  // The program name renders inside a `.badge`, which is CSS
-  // text-transform: uppercase - .innerText() reflects that rendered
-  // transform, so compare case-insensitively rather than to the exact
-  // stored casing.
-  const feHeader = (await feAdmin.locator("header").innerText()).toLowerCase();
-  await assert(feHeader.includes("front-end development"), "Front-end admin header should show their program");
-  const netHeader = (await netAdmin.locator("header").innerText()).toLowerCase();
-  await assert(netHeader.includes("networks"), "Networks admin header should show their program");
+  // ---------- Sidebar shows the admin's own program, not the other's ----------
+  // The program name renders in the sidebar's signed-in-user card (it used
+  // to be a badge in the top header before the sidebar redesign). Compared
+  // case-insensitively so a future text-transform doesn't break this.
+  const feHeader = (await feAdmin.locator("aside.sa-sidebar").innerText()).toLowerCase();
+  await assert(feHeader.includes("front-end development"), "Front-end admin sidebar should show their program");
+  const netHeader = (await netAdmin.locator("aside.sa-sidebar").innerText()).toLowerCase();
+  await assert(netHeader.includes("networks"), "Networks admin sidebar should show their program");
   ok("each admin's header shows their own program");
 
   // ---------- Neither regular admin sees Program management or Admin management ----------
@@ -143,8 +146,7 @@ async function run() {
   await feAdmin.check('input[name="correct"][value="1"]');
   await Promise.all([feAdmin.waitForURL(`${BASE}/admin/quizzes/${feQuizId}`), main(feAdmin).locator('button[type="submit"]').click()]);
   await feAdmin.goto(`${BASE}/admin/quizzes/${feQuizId}`, { waitUntil: "networkidle" });
-  await main(feAdmin).locator('input[name="groupIds"]').nth(0).check();
-  await main(feAdmin).getByRole("button", { name: "Save subject & groups" }).click();
+  await Promise.all([feAdmin.waitForResponse((r) => r.request().method() === "POST"), main(feAdmin).locator('input[name="groupIds"]').nth(0).check()]);
   await feAdmin.waitForLoadState("networkidle");
   await main(feAdmin).getByRole("button", { name: "Published", exact: true }).click();
   await feAdmin.waitForTimeout(500);
@@ -170,10 +172,8 @@ async function run() {
 
   // ---------- Subject assigned but no group: shown with a message, no quiz access ----------
   await feAdmin.goto(`${BASE}/admin/students/${(await prisma.user.findUniqueOrThrow({ where: { username: feStudentUser } })).id}/edit`, { waitUntil: "networkidle" });
-  await main(feAdmin)
-    .getByRole("radiogroup", { name: "JavaScript group" })
-    .getByRole("radio", { name: "No group yet", exact: true })
-    .check();
+  // Tick the subject without choosing a group = "assigned, no group yet".
+  await main(feAdmin).getByRole("checkbox", { name: "JavaScript", exact: true }).check();
   await Promise.all([
     feAdmin.waitForURL((u) => u.searchParams.get("updated") === "1"),
     main(feAdmin).getByRole("button", { name: "Save changes" }).click(),

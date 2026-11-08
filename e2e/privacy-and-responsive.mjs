@@ -24,7 +24,7 @@ const main = (p) => p.locator("main");
 const RUN_ID = Date.now();
 
 async function createStudent(admin, username) {
-  await admin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
+  await admin.goto(`${BASE}/admin/students/new`, { waitUntil: "networkidle" });
   await main(admin).locator('input[name="firstName"]').fill("Priv");
   await main(admin).locator('input[name="lastName"]').fill("Test");
   await main(admin).locator('input[name="username"]').fill(username);
@@ -40,6 +40,8 @@ async function loginAs(page, user, pass) {
   await page.fill('input[name="username"]', user);
   await page.fill('input[name="password"]', pass);
   await Promise.all([page.waitForURL(`${BASE}/dashboard`), page.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await page.locator('[aria-busy="true"]').waitFor({ state: "detached" });
 }
 
 async function run() {
@@ -48,6 +50,8 @@ async function run() {
   await admin.fill('input[name="username"]', ADMIN_USERNAME);
   await admin.fill('input[name="password"]', ADMIN_PASSWORD);
   await Promise.all([admin.waitForURL(`${BASE}/admin`), admin.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await admin.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   ok("admin login");
 
   // ---------- Cross-student privacy: quiz result isolation ----------
@@ -123,6 +127,8 @@ async function run() {
   await mobileAdmin.fill('input[name="username"]', ADMIN_USERNAME);
   await mobileAdmin.fill('input[name="password"]', ADMIN_PASSWORD);
   await Promise.all([mobileAdmin.waitForURL(`${BASE}/admin`), mobileAdmin.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await mobileAdmin.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   async function checkAdminNoOverflow(url, label) {
     await mobileAdmin.goto(url, { waitUntil: "networkidle" });
     const { scrollWidth, clientWidth } = await mobileAdmin.evaluate(() => ({

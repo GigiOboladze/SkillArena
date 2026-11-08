@@ -148,3 +148,26 @@ export async function getAuthRateLimitKey(): Promise<string> {
   });
   return token;
 }
+
+// --- Public legacy LIVE/ASYNC forms ---
+//
+// Creating a homework and joining one need no account (by design - see
+// homeworks/actions.ts), so without a limit they are open database-write
+// endpoints on a public URL. Same per-browser cookie approach as above: a
+// speed bump against scripted floods, not an identity.
+const PUBLIC_FORM_RATE_LIMIT_COOKIE = "pub_rl";
+
+export async function getPublicFormRateLimitKey(): Promise<string> {
+  const store = await cookies();
+  const existing = store.get(PUBLIC_FORM_RATE_LIMIT_COOKIE)?.value;
+  if (existing) return existing;
+
+  const token = generateToken();
+  store.set(PUBLIC_FORM_RATE_LIMIT_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 30,
+    path: "/",
+  });
+  return token;
+}

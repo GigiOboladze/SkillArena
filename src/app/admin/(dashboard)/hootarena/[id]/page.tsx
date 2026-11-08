@@ -39,6 +39,10 @@ export default async function ManageHootGamePage({
   });
 
   const editable = game.status === "LOBBY";
+  // A finished game is no longer listed on /admin/hootarena, but its page is
+  // still reachable (e.g. from the host screen's back link or browser
+  // history) - it must not claim to be live or invite more players.
+  const finished = game.status === "FINISHED";
   const updateDetails = updateHootGameDetails.bind(null, game.id);
   const removeGame = deleteHootGame.bind(null, game.id);
   const qrDataUrl = await generateHootJoinQrDataUrl(game.pin);
@@ -50,18 +54,29 @@ export default async function ManageHootGamePage({
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold">{game.title}</h1>
-            {!editable && <span className="badge badge-success">Live</span>}
+            {!editable && (
+              <span className={finished ? "badge badge-neutral" : "badge badge-success"}>
+                {finished ? "Finished" : "Live"}
+              </span>
+            )}
           </div>
           <p className="mt-1 text-sm text-rahoot-muted">
             {questions.length} question{questions.length === 1 ? "" : "s"}
           </p>
         </div>
         <Link href={`/admin/hootarena/${game.id}/host`} className="btn btn-primary">
-          {editable ? "Open lobby" : "Open host controls"}
+          {editable ? "Open lobby" : finished ? "View final results" : "Open host controls"}
         </Link>
       </div>
 
-      {!editable && (
+      {finished && (
+        <p className="text-sm text-rahoot-muted">
+          This game is over - its questions and final results are kept here for reference. Create a new game to
+          play again.
+        </p>
+      )}
+
+      {!editable && !finished && (
         <p className="text-sm text-rahoot-muted">
           This game has started - questions are locked in. Manage it live from{" "}
           <Link href={`/admin/hootarena/${game.id}/host`} className="text-rahoot-red hover:underline">
@@ -71,41 +86,43 @@ export default async function ManageHootGamePage({
         </p>
       )}
 
-      <section className="card p-6">
-        <h2 className="font-bold">Join code &amp; QR</h2>
-        <p className="mt-1 text-sm text-rahoot-muted">
-          Players scan the QR code or open the link - no account needed, they just pick a nickname.
-        </p>
-        <div className="mt-4 flex flex-wrap items-center gap-6">
-          <div>
-            <div className="inline-block rounded-2xl border-4 border-rahoot-red bg-white p-3">
-              <Image
-                src={qrDataUrl}
-                alt={`QR code to join ${game.title}`}
-                width={200}
-                height={200}
-                unoptimized
-                className="rounded-md"
-              />
+      {!finished && (
+        <section className="card p-6">
+          <h2 className="font-bold">Join code &amp; QR</h2>
+          <p className="mt-1 text-sm text-rahoot-muted">
+            Players scan the QR code or open the link - no account needed, they just pick a nickname.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-6">
+            <div>
+              <div className="inline-block rounded-2xl border-4 border-rahoot-red bg-white p-3">
+                <Image
+                  src={qrDataUrl}
+                  alt={`QR code to join ${game.title}`}
+                  width={200}
+                  height={200}
+                  unoptimized
+                  className="rounded-md"
+                />
+              </div>
+              <a
+                href={qrDataUrl}
+                download={`hootarena-${game.pin}-qr.png`}
+                className="mt-2 block text-center text-sm text-rahoot-red hover:underline"
+              >
+                Download QR
+              </a>
             </div>
-            <a
-              href={qrDataUrl}
-              download={`hootarena-${game.pin}-qr.png`}
-              className="mt-2 block text-center text-sm text-rahoot-red hover:underline"
-            >
-              Download QR
-            </a>
+            <div>
+              <p className="text-sm text-rahoot-muted">Game PIN</p>
+              <p className="font-mono text-4xl font-black tracking-widest">{game.pin}</p>
+              <p className="mt-3 text-sm text-rahoot-muted">Link</p>
+              <a href={joinUrl} className="break-all text-sm text-rahoot-red hover:underline">
+                {joinUrl}
+              </a>
+            </div>
           </div>
-          <div>
-            <p className="text-sm text-rahoot-muted">Game PIN</p>
-            <p className="font-mono text-4xl font-black tracking-widest">{game.pin}</p>
-            <p className="mt-3 text-sm text-rahoot-muted">Link</p>
-            <a href={joinUrl} className="break-all text-sm text-rahoot-red hover:underline">
-              {joinUrl}
-            </a>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {editable && (
         <section className="card p-6">

@@ -38,6 +38,8 @@ async function adminLogin(username, password) {
   await page.fill('input[name="username"]', username);
   await page.fill('input[name="password"]', password);
   await Promise.all([page.waitForURL(`${BASE}/admin`), page.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await page.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   return page;
 }
 
@@ -47,6 +49,8 @@ async function studentLogin(username, password) {
   await page.fill('input[name="username"]', username);
   await page.fill('input[name="password"]', password);
   await Promise.all([page.waitForURL(`${BASE}/dashboard`), page.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await page.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   return page;
 }
 
@@ -320,7 +324,22 @@ try {
   try { await browser.close(); } catch {}
   try {
     // Best-effort cleanup even on failure, so reruns don't collide on unique usernames.
-    await prisma.user.deleteMany({ where: { username: { in: createdAdminUsernames } } });
+    // The profile admin is renamed mid-run (e2e-profile-* -> e2e-renamed-*), so both names
+    // are listed; previously the renamed one leaked every run, and after six runs the
+    // 8-admin cap was full and the INCO suite could no longer create its admin.
+    await prisma.user.deleteMany({
+      where: {
+        username: {
+          in: [
+            ...createdAdminUsernames,
+            `e2e-profile-${RUN_ID}`,
+            `e2e-renamed-${RUN_ID}`,
+            `e2e-bugstu-${RUN_ID}`,
+            `e2e-otherstu-${RUN_ID}`,
+          ],
+        },
+      },
+    });
   } catch {}
   try { await prisma.$disconnect(); } catch {}
   const failed = results.filter((r) => !r.pass);

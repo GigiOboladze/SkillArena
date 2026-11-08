@@ -13,24 +13,35 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  const attachment = await prisma.bugReportAttachment.findUnique({
-    where: { id },
-    include: { bugReport: { select: { studentId: true } } },
-  });
-  if (!attachment) {
+  // Ownership metadata first, image bytes only once access is confirmed - an
+  // unauthorized or anonymous request no longer makes the database read (and
+  // ship to Node) up to 3MB of image data just to be told "404".
+  const [meta, student, admin] = await Promise.all([
+    prisma.bugReportAttachment.findUnique({
+      where: { id },
+      select: { contentType: true, fileSize: true, bugReport: { select: { studentId: true } } },
+    }),
+    getCurrentStudent(),
+    getCurrentAdmin(),
+  ]);
+  if (!meta) {
     return new NextResponse("Not found", { status: 404 });
   }
 
-  const [student, admin] = await Promise.all([getCurrentStudent(), getCurrentAdmin()]);
-  const isOwner = student?.id === attachment.bugReport.studentId;
+  const isOwner = student?.id === meta.bugReport.studentId;
   if (!isOwner && !admin) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+
+  const attachment = await prisma.bugReportAttachment.findUnique({ where: { id }, select: { data: true } });
+  if (!attachment) {
     return new NextResponse("Not found", { status: 404 });
   }
 
   return new NextResponse(attachment.data, {
     headers: {
-      "Content-Type": attachment.contentType,
-      "Content-Length": String(attachment.fileSize),
+      "Content-Type": meta.contentType,
+      "Content-Length": String(meta.fileSize),
       "Cache-Control": "private, max-age=3600",
     },
   });

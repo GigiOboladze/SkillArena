@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getCurrentAdmin } from "@/lib/session";
 import { getCumulativeLeaderboard } from "@/lib/quiz";
 import { resolveAdminProgramScope, listPrograms } from "@/lib/programs";
-import { CumulativeLeaderboard } from "@/components/CumulativeLeaderboard";
+import { LeaderboardView } from "@/components/student/LeaderboardView";
 import { ProgramSelector } from "@/components/ProgramSelector";
 
 export default async function AdminLeaderboardPage({
@@ -24,21 +24,16 @@ export default async function AdminLeaderboardPage({
   ]);
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Leaderboard</h1>
-          <p className="mt-1 text-sm text-rahoot-muted">
-            Cumulative score across every quiz a student has completed in this program.
-          </p>
-        </div>
-        {admin.role === "SUPER_ADMIN" && (
-          <ProgramSelector programs={programs} currentProgramId={programId} basePath="/admin/leaderboard" />
-        )}
-      </div>
-      <div className="mt-6">
-        <CumulativeLeaderboard entries={entries} />
-      </div>
-    </div>
+    <LeaderboardView
+      entries={entries}
+      description="Cumulative score across every quiz a student has completed in this program."
+      actions={
+        admin.role === "SUPER_ADMIN" && programs.length > 1 ? (
+          <div className="sa-chip !flex-row min-w-0 max-w-full items-center">
+            <ProgramSelector programs={programs} currentProgramId={programId} basePath="/admin/leaderboard" />
+          </div>
+        ) : null
+      }
+    />
   );
 }

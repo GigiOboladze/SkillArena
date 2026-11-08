@@ -9,15 +9,12 @@ export default async function QuizResultPage({ params }: PageProps<"/quiz/[id]/r
   const { id } = await params;
   const student = (await getCurrentStudent())!;
 
-  const quiz = await getVisibleQuiz(id);
+  // Independent reads - run together rather than one after the other.
+  const [quiz, attempt] = await Promise.all([getVisibleQuiz(id), getAttempt(student.id, id)]);
   if (!quiz) notFound();
 
-  const attempt = await getAttempt(student.id, id);
   if (!attempt) redirect(`/quiz/${id}`);
   if (attempt.status === "IN_PROGRESS") redirect(`/quiz/${id}/q/0`);
-
-  const answers = await prisma.attemptAnswer.findMany({ where: { attemptId: attempt.id } });
-  const answerByQuestion = new Map(answers.map((a) => [a.questionId, a]));
 
   if (attempt.status === "FAILED") {
     return (
@@ -42,9 +39,12 @@ export default async function QuizResultPage({ params }: PageProps<"/quiz/[id]/r
   // directly rather than by building the entire program leaderboard and
   // picking one entry out of it (measured 2.3x faster, and it no longer
   // scales with the program's student count - see getStudentCumulativeTotal).
-  const totalScore = student.programId
-    ? await getStudentCumulativeTotal(student.id, student.programId)
-    : attempt.score;
+  // Both reads are independent, so they run together.
+  const [answers, totalScore] = await Promise.all([
+    prisma.attemptAnswer.findMany({ where: { attemptId: attempt.id } }),
+    student.programId ? getStudentCumulativeTotal(student.id, student.programId) : Promise.resolve(attempt.score),
+  ]);
+  const answerByQuestion = new Map(answers.map((a) => [a.questionId, a]));
 
   return (
     <div className="flex w-full flex-1 flex-col">

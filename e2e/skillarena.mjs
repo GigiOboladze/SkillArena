@@ -35,6 +35,8 @@ async function adminLogin() {
   await page.fill('input[name="username"]', ADMIN_USERNAME);
   await page.fill('input[name="password"]', ADMIN_PASSWORD);
   await Promise.all([page.waitForURL(`${BASE}/admin`), page.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await page.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   return page;
 }
 
@@ -44,11 +46,13 @@ async function studentLogin(username, password) {
   await page.fill('input[name="username"]', username);
   await page.fill('input[name="password"]', password);
   await Promise.all([page.waitForURL(`${BASE}/dashboard`), page.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await page.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   return page;
 }
 
 async function createStudent(admin, username, jsGroupLabel) {
-  await admin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
+  await admin.goto(`${BASE}/admin/students/new`, { waitUntil: "networkidle" });
   await main(admin).locator('input[name="firstName"]').fill(username);
   await main(admin).locator('input[name="lastName"]').fill("Test");
   await main(admin).locator('input[name="username"]').fill(username);
@@ -109,9 +113,9 @@ async function run() {
   // creation) - verify target-group assignment instead: Group I + Group III.
   await admin.goto(quizUrl, { waitUntil: "networkidle" });
   const groupCheckboxes = main(admin).locator('input[name="groupIds"]');
-  await groupCheckboxes.nth(0).check(); // Group I
-  await groupCheckboxes.nth(2).check(); // Group III
-  await main(admin).getByRole("button", { name: "Save subject & groups" }).click();
+  // Each group pill saves on click.
+  await Promise.all([admin.waitForResponse((r) => r.request().method() === "POST"), groupCheckboxes.nth(0).check()]); // Group I
+  await Promise.all([admin.waitForResponse((r) => r.request().method() === "POST"), groupCheckboxes.nth(2).check()]); // Group III
   await admin.waitForLoadState("networkidle");
   ok("assigned multiple target groups (Group I + Group III) to the quiz");
 
@@ -236,10 +240,18 @@ async function run() {
   await simulateSwitch();
   let counterText = await main(sCheater).innerText();
   await assert(counterText.includes("1 / 3"), "expected tab-switch counter at 1/3 after first switch");
+  await assert(
+    counterText.includes("Warning: leaving the quiz has been detected.") && !counterText.includes("Final warning"),
+    "the first switch must show the mild warning, not the final one"
+  );
   await simulateSwitch();
   counterText = await main(sCheater).innerText();
   await assert(counterText.includes("2 / 3"), "expected tab-switch counter at 2/3 after second switch");
-  ok("tab-switch counter visibly increments (1/3, 2/3)");
+  await assert(
+    counterText.includes("Final warning: one more detected switch will fail this quiz."),
+    "the last tolerated switch must show the final warning"
+  );
+  ok("tab-switch counter visibly increments (1/3, 2/3) with the warning, then the final warning");
 
   await simulateSwitch();
   await sCheater.waitForURL(`${BASE}/quiz/${quizId}/result`, { timeout: 5000 });

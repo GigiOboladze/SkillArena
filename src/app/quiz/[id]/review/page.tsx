@@ -10,10 +10,10 @@ export default async function QuizReviewPage({ params }: PageProps<"/quiz/[id]/r
   const { id } = await params;
   const student = (await getCurrentStudent())!;
 
-  const quiz = await getVisibleQuiz(id);
+  // Independent reads - run together rather than one after the other.
+  const [quiz, attempt] = await Promise.all([getVisibleQuiz(id), getAttempt(student.id, id)]);
   if (!quiz) notFound();
 
-  const attempt = await getAttempt(student.id, id);
   if (!attempt) redirect(`/quiz/${id}`);
   if (attempt.status !== "IN_PROGRESS") redirect(`/quiz/${id}/result`);
 

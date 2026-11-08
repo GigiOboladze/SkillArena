@@ -29,7 +29,9 @@ export async function gradeAnswer(
 
   // Clamp to the question's own point value, not just >= 0. The grading form
   // already sets max={question.points}, but that is a client-side hint only.
-  const requested = Math.max(0, Number(formData.get("points")) || 0);
+  // Whole points only - the column is an Int.
+  const raw = Number(formData.get("points"));
+  const requested = Number.isFinite(raw) ? Math.max(0, Math.round(raw)) : 0;
   const points = Math.min(requested, answer.question.points);
 
   await prisma.answer.update({

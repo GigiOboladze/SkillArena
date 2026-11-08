@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import type { QuizAttempt } from "@/generated/prisma/client";
 
@@ -23,12 +24,12 @@ import { QUIZ_QUESTION_TIME_LIMIT_SEC } from "@/lib/quiz-constants";
  * (The previous version of this comment claimed it filtered for "published",
  * which it never did.)
  */
-export async function getVisibleQuiz(quizId: string) {
+export const getVisibleQuiz = cache(async (quizId: string) => {
   return prisma.homework.findFirst({
     where: { id: quizId, mode: "QUIZ" },
     include: { questions: { orderBy: { order: "asc" }, include: { options: { orderBy: { order: "asc" } } } } },
   });
-}
+});
 
 export async function getAttempt(studentId: string, quizId: string) {
   return prisma.quizAttempt.findUnique({
@@ -127,27 +128,48 @@ export async function getStudentCumulativeTotal(studentId: string, programId: st
   return aggregate._sum.score ?? 0;
 }
 
-export async function getCumulativeLeaderboard(programId: string): Promise<CumulativeLeaderboardEntry[]> {
-  const students = await prisma.user.findMany({
-    where: { role: "STUDENT", programId },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      quizAttempts: {
-        where: { status: { in: ["COMPLETED", "FAILED"] }, homework: { subject: { programId } } },
-        select: { score: true },
+/**
+ * Performance: the totals are summed by Postgres (one GROUP BY over this
+ * program's attempts) instead of loading every attempt row into Node and
+ * adding them up - on a 300-student program that was ~7,000 rows shipped per
+ * page view just to produce 300 numbers. The roster and the aggregate are
+ * independent, so they run in parallel. Same rules and same result as before:
+ * students currently in the program (including those with no attempts yet),
+ * COMPLETED + FAILED attempts on that program's own quizzes, ties by name.
+ *
+ * Wrapped in React's `cache()` so a page that needs it more than once in one
+ * render (e.g. the dashboard's stats and its "top of the class" panel) only
+ * computes it once.
+ */
+export const getCumulativeLeaderboard = cache(async (programId: string): Promise<CumulativeLeaderboardEntry[]> => {
+  const [students, totals] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: "STUDENT", programId },
+      select: { id: true, firstName: true, lastName: true },
+    }),
+    prisma.quizAttempt.groupBy({
+      by: ["studentId"],
+      where: {
+        status: { in: ["COMPLETED", "FAILED"] },
+        homework: { subject: { programId } },
+        student: { role: "STUDENT", programId },
       },
-    },
-  });
+      _sum: { score: true },
+      _count: { _all: true },
+    }),
+  ]);
 
-  const entries: CumulativeLeaderboardEntry[] = students.map((s) => ({
-    studentId: s.id,
-    firstName: s.firstName,
-    lastName: s.lastName,
-    totalScore: s.quizAttempts.reduce((sum, a) => sum + a.score, 0),
-    completedQuizzes: s.quizAttempts.length,
-  }));
+  const totalByStudent = new Map(totals.map((t) => [t.studentId, t]));
+  const entries: CumulativeLeaderboardEntry[] = students.map((s) => {
+    const t = totalByStudent.get(s.id);
+    return {
+      studentId: s.id,
+      firstName: s.firstName,
+      lastName: s.lastName,
+      totalScore: t?._sum.score ?? 0,
+      completedQuizzes: t?._count._all ?? 0,
+    };
+  });
 
   entries.sort((a, b) => {
     if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
@@ -157,4 +179,4 @@ export async function getCumulativeLeaderboard(programId: string): Promise<Cumul
   });
 
   return entries;
-}
+});

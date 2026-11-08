@@ -6,6 +6,7 @@
     "postinstall": "prisma generate",
     "dev": "tsx watch server.ts",
     "build": "next build",
+    "prestart": "node scripts/migrate-on-start.mjs",
     "start": "cross-env NODE_ENV=production tsx server.ts",
     "release": "prisma migrate deploy && npm run db:seed",
     "lint": "eslint",
@@ -26,6 +27,7 @@
     "test:e2e:hootarena-reconnect": "tsx e2e/hootarena-reconnect.mjs",
     "test:e2e:security": "tsx e2e/security-regression.mjs",
     "test:e2e:hootarena-concurrency": "tsx e2e/hootarena-concurrency.mjs",
+    "test:e2e:launch": "tsx e2e/launch-readiness.mjs",
     "test:all": "tsx e2e/run-all.mjs"
   },
   "dependencies": {

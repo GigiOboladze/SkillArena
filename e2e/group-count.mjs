@@ -36,6 +36,8 @@ async function login(creds) {
   await page.fill('input[name="username"]', creds.username);
   await page.fill('input[name="password"]', creds.password);
   await Promise.all([page.waitForURL(`${BASE}/admin`), page.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await page.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   return page;
 }
 
@@ -45,6 +47,8 @@ async function studentLogin(username, password) {
   await page.fill('input[name="username"]', username);
   await page.fill('input[name="password"]', password);
   await Promise.all([page.waitForURL(`${BASE}/dashboard`), page.click('button[type="submit"]')]);
+  // The dashboard/admin areas stream behind a loading skeleton; wait for the real content.
+  await page.locator('[aria-busy="true"]').waitFor({ state: "detached" });
   return page;
 }
 
@@ -68,7 +72,7 @@ async function run() {
 
   // ---------- UI: Front-end admin's group selector offers 4 options for JavaScript ----------
   const feAdmin = await login(FRONTEND_ADMIN);
-  await feAdmin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
+  await feAdmin.goto(`${BASE}/admin/students/new`, { waitUntil: "networkidle" });
   const feRadios = await main(feAdmin).getByRole("radiogroup", { name: "JavaScript group" }).getByRole("radio").all();
   const feLabels = await Promise.all(feRadios.map((r) => r.evaluate((el) => el.nextElementSibling?.textContent)));
   await assert(feLabels.includes("IV"), `expected a 'IV' option in the Front-end JavaScript group selector, got: ${feLabels}`);
@@ -76,11 +80,11 @@ async function run() {
 
   // ---------- UI: Networks admin's group selector never offers a 4th option ----------
   const netAdmin = await login(NETWORKS_ADMIN);
-  await netAdmin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
+  await netAdmin.goto(`${BASE}/admin/students/new`, { waitUntil: "networkidle" });
   const netRadios = await main(netAdmin).getByRole("radiogroup", { name: "ინგლისური group" }).getByRole("radio").all();
   const netLabels = await Promise.all(netRadios.map((r) => r.evaluate((el) => el.nextElementSibling?.textContent)));
   await assert(!netLabels.includes("IV"), `Networks group selector must never offer 'IV', got: ${netLabels}`);
-  await assert(netLabels.filter((l) => l !== "Not assigned" && l !== "No group yet").length === 3, `expected exactly 3 real group options for Networks, got: ${netLabels}`);
+  await assert(netLabels.length === 3, `expected exactly 3 real group options for Networks, got: ${netLabels}`);
   ok("Networks admin's student-creation form offers only 3 group options (no IV)");
 
   // ---------- End-to-end: Front-end student assigned to Group IV can access a Group-IV-targeted quiz ----------
@@ -118,8 +122,7 @@ async function run() {
   // Target ONLY Group IV (the 4th checkbox) - not I, II, or III.
   const groupCheckboxes = main(feAdmin).locator('input[name="groupIds"]');
   await assert(await groupCheckboxes.count() === 4, `expected 4 target-group checkboxes for a Front-end subject, got ${await groupCheckboxes.count()}`);
-  await groupCheckboxes.nth(3).check();
-  await main(feAdmin).getByRole("button", { name: "Save subject & groups" }).click();
+  await groupCheckboxes.nth(3).check(); // saves on click
   // Wait for the targeting write to actually land rather than sleeping a
   // fixed 500ms: publishing is REJECTED unless at least one target group
   // exists, so racing ahead here left the quiz in DRAFT and made the
@@ -148,7 +151,7 @@ async function run() {
 
   // A Group I/II/III Front-end student must NOT see the Group-IV-only quiz.
   const otherStudentUser = `e2e-groupi-stu-${RUN_ID}`;
-  await feAdmin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
+  await feAdmin.goto(`${BASE}/admin/students/new`, { waitUntil: "networkidle" });
   await main(feAdmin).locator('input[name="firstName"]').fill("GroupOne");
   await main(feAdmin).locator('input[name="lastName"]').fill("Test");
   await main(feAdmin).locator('input[name="username"]').fill(otherStudentUser);
@@ -179,7 +182,7 @@ async function run() {
   // (see parseSubjectGroupAssignments's `subject.groups.some(...)` check).
   // Confirm this in the running app by attempting it through a real (but
   // adversarial) browser DOM manipulation of the form value before submit.
-  await feAdmin.goto(`${BASE}/admin/students`, { waitUntil: "networkidle" });
+  await feAdmin.goto(`${BASE}/admin/students/new`, { waitUntil: "networkidle" });
   await main(feAdmin).locator('input[name="firstName"]').fill("Bogus");
   await main(feAdmin).locator('input[name="lastName"]').fill("Group");
   await main(feAdmin).locator('input[name="username"]').fill(csrfProbeUser);
@@ -193,11 +196,11 @@ async function run() {
   // interference with the rest of the form.
   await main(feAdmin)
     .getByRole("radiogroup", { name: "JavaScript group" })
-    .getByRole("radio", { name: "No group yet", exact: true })
+    .getByRole("radio", { name: "I", exact: true })
     .check();
   await feAdmin.evaluate(
     ({ subjectId, bogusId }) => {
-      const input = document.querySelector(`input[name="group_${subjectId}"][value=""]`);
+      const input = document.querySelector(`input[name="group_${subjectId}"]:checked`);
       if (input) input.value = bogusId;
     },
     { subjectId: jsSubject.id, bogusId: bogusGroupId }

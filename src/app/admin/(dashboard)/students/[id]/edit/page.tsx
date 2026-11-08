@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentAdmin } from "@/lib/session";
 import { listSubjectsWithGroups } from "@/lib/subjects";
 import { updateStudent } from "../../actions";
-import { SubjectGroupFields } from "../../SubjectGroupFields";
+import { SubjectAssignmentPicker } from "@/components/admin/students/SubjectAssignmentPicker";
+import { StarRatingInput } from "@/components/admin/students/StarRatingInput";
 
 const ERROR_MESSAGES: Record<string, string> = {
   missing: "First name, last name, and username are all required.",
@@ -35,9 +36,9 @@ export default async function EditStudentPage({
   const action = updateStudent.bind(null, student.id);
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <Link href="/admin/students" className="text-sm text-rahoot-red hover:underline">
-        &larr; Back to students
+    <div className="mx-auto max-w-4xl">
+      <Link href={`/admin/students/${student.id}`} className="text-sm text-rahoot-red hover:underline">
+        &larr; Back to {student.firstName}
       </Link>
       <h1 className="mt-2 text-2xl font-bold">
         Edit {student.firstName} {student.lastName}
@@ -53,6 +54,16 @@ export default async function EditStudentPage({
             Last name
             <input name="lastName" required maxLength={80} defaultValue={student.lastName} className="input mt-1" />
           </label>
+          <label className="text-sm font-semibold">
+            Hobby <span className="font-normal text-rahoot-muted">(optional)</span>
+            <input name="hobby" maxLength={220} defaultValue={student.hobby ?? ""} placeholder="e.g. Gaming, Music, Football (comma-separated)" className="input mt-1" />
+          </label>
+          <div className="text-sm font-semibold">
+            Communication skill
+            <div className="mt-2">
+              <StarRatingInput defaultValue={student.communicationSkill} allowClear />
+            </div>
+          </div>
           <label className="text-sm font-semibold sm:col-span-2">
             Username
             <input
@@ -66,7 +77,10 @@ export default async function EditStudentPage({
           </label>
         </div>
 
-        <SubjectGroupFields subjects={subjects} currentAssignments={currentAssignments} />
+        <div className="flex flex-col gap-3">
+          <p className="text-sm font-semibold">Subject &amp; group assignments</p>
+          <SubjectAssignmentPicker subjects={subjects} currentAssignments={currentAssignments} />
+        </div>
 
         {error && <p className="text-sm font-medium text-rahoot-red">{error}</p>}
         <button type="submit" className="btn btn-primary self-start">

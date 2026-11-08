@@ -16,7 +16,7 @@ export default async function EditQuizQuestionPage({
   const search = await searchParams;
   const error = typeof search?.error === "string" ? search.error : null;
 
-  const quiz = await prisma.homework.findFirst({ where: { id, mode: "QUIZ" }, include: { subject: true } });
+  const quiz = await prisma.homework.findFirst({ where: { id, mode: "QUIZ" }, include: { subject: { include: { program: { select: { name: true } } } } } });
   if (!quiz) notFound();
   if (admin.role !== "SUPER_ADMIN" && quiz.subject?.programId !== admin.programId) notFound();
 
@@ -38,15 +38,26 @@ export default async function EditQuizQuestionPage({
   const action = updateQuizQuestion.bind(null, id, qid);
 
   return (
-    <div className="mx-auto max-w-lg">
-      <Link href={`/admin/quizzes/${id}`} className="text-sm text-rahoot-red hover:underline">
+    <section className="sa-qn">
+      {quiz.subject && (
+        <div className="sa-qn-program">
+          <span className="sa-qn-program-icon" aria-hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+              <path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4M13.5 5.5l-3 13" />
+            </svg>
+          </span>
+          <span className="text-sm font-semibold">Program</span>
+          <span className="sa-qd-divider" aria-hidden />
+          <span className="truncate text-sm font-semibold">{quiz.subject.program.name}</span>
+        </div>
+      )}
+
+      <Link href={`/admin/quizzes/${id}`} className="sa-qn-back">
         &larr; Back to quiz
       </Link>
-      <h1 className="mt-2 text-2xl font-bold">Edit question</h1>
+      <h1 className="sa-qn-title !text-4xl">Edit question</h1>
 
-      <div className="mt-6">
-        <QuizQuestionForm action={action} defaults={defaults} error={error} submitLabel="Save changes" />
-      </div>
-    </div>
+      <QuizQuestionForm action={action} defaults={defaults} error={error} submitLabel="Save changes" />
+    </section>
   );
 }
