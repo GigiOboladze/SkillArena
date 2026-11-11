@@ -1,70 +1,70 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { login } from "./actions";
+import { getCurrentStaff, getCurrentStudent } from "@/lib/session";
+import { LoginForm } from "./LoginForm";
 
-export default async function StudentLoginPage({
-  searchParams,
-}: PageProps<"/login">) {
+export const metadata: Metadata = { title: "Enter SkillArena" };
+
+const ERRORS: Record<string, string> = {
+  invalid: "Incorrect username or password.",
+  throttled: "Too many login attempts. Wait a few minutes and try again.",
+};
+
+/** The single login for students and every staff role. */
+export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const params = await searchParams;
-  const from = typeof params?.from === "string" ? params.from : "/dashboard";
-  const hasError = params?.error === "invalid";
-  const isThrottled = params?.error === "throttled";
+  const from = typeof params?.from === "string" ? params.from : "";
+  const errorKey = typeof params?.error === "string" ? params.error : "";
+  const passwordChanged = params?.passwordChanged === "1";
+
+  // Already signed in: offer a way back to the workspace, but keep the form
+  // so a shared classroom computer can switch accounts (signing in replaces
+  // the current session).
+  const [staff, student] = passwordChanged ? [null, null] : await Promise.all([getCurrentStaff(), getCurrentStudent()]);
+  const signedIn = staff ?? student;
 
   return (
-    <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
-      <div className="fixed right-4 top-4">
+    <main className="sa-login">
+      <div className="sa-login-bg" aria-hidden>
+        <span className="sa-login-glow is-a" />
+        <span className="sa-login-glow is-b" />
+        <span className="sa-login-grid" />
+      </div>
+
+      <div className="sa-login-theme">
         <ThemeToggle />
       </div>
-      <div className="w-full max-w-sm">
-        <div className="text-center">
-          <Link href="/" className="inline-block">
-            <Logo size={44} priority className="mx-auto" />
-          </Link>
-          <h1 className="mt-4 text-xl font-bold">Student login</h1>
-          <p className="mt-1 text-sm text-rahoot-muted">
-            Use the username and password your instructor gave you.
-          </p>
-        </div>
 
-        <form action={login} className="mt-8 flex flex-col gap-3">
-          <input type="hidden" name="from" value={from} />
-          <label className="text-sm font-semibold">
-            Username
-            <input
-              type="text"
-              name="username"
-              required
-              autoFocus
-              autoComplete="username"
-              className="input mt-1"
-            />
-          </label>
-          <label className="text-sm font-semibold">
-            Password
-            <input
-              type="password"
-              name="password"
-              required
-              autoComplete="current-password"
-              className="input mt-1"
-            />
-          </label>
-          {hasError && (
-            <p className="text-sm font-medium text-rahoot-red">
-              Incorrect username or password.
-            </p>
-          )}
-          {isThrottled && (
-            <p className="text-sm font-medium text-rahoot-red">
-              Too many login attempts. Please wait a few minutes and try again.
-            </p>
-          )}
-          <button type="submit" className="btn btn-primary mt-2">
-            Log in
-          </button>
-        </form>
-      </div>
+      <section className="sa-login-card" aria-labelledby="login-heading">
+        <Logo size={52} priority className="sa-login-logo" />
+
+        <h1 id="login-heading" className="sa-login-title">
+          <span>Learn</span>
+          <span className="sa-login-slash" aria-hidden>/</span>
+          <span>Compete</span>
+          <span className="sa-login-slash" aria-hidden>/</span>
+          <span className="sa-login-accent">Grow</span>
+        </h1>
+        <p className="sa-login-sub">Sign in with your SkillArena account.</p>
+
+        {signedIn && (
+          <p className="sa-login-notice is-session" role="status">
+            Signed in as <strong>@{signedIn.username}</strong>.{" "}
+            <Link href={staff ? "/admin" : "/dashboard"}>Continue →</Link>
+          </p>
+        )}
+        {passwordChanged && (
+          <p className="sa-login-notice" role="status">
+            Password changed. Sign in again with your new password.
+          </p>
+        )}
+
+        <LoginForm from={from} error={ERRORS[errorKey] ?? null} />
+      </section>
+
+      <p className="sa-login-tagline">Arena Awaits.</p>
     </main>
   );
 }

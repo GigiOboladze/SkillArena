@@ -19,14 +19,27 @@ enum HomeworkMode {
 
 enum UserRole {
   SUPER_ADMIN // Exactly one, ever - enforced by a partial unique index (see migration) and never assignable through the admin-creation UI
-  ADMIN
+  ADMIN // Legacy program-scoped admin. Kept exactly as-is until the Super Admin assigns each account one of the roles below by hand.
   STUDENT
+  LECTURER
+  JUNIOR_CAPTAIN
+  MIDDLE_CAPTAIN
+  SENIOR_CAPTAIN
+  SUCCESS_MANAGER
 }
 
 enum BugReportStatus {
   OPEN
   IN_PROGRESS
   RESOLVED
+}
+
+// Set by admins when triaging (students don't choose it); new reports start at MEDIUM.
+enum BugReportPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
 }
 
 enum QuizAttemptStatus {
@@ -80,6 +93,10 @@ model User {
   // store for otherwise-stateless JWTs.
   sessionVersion Int @default(0)
 
+  // false = deactivated: login is refused and every existing session stops
+  // verifying (session.ts checks this on every request). Nothing is deleted.
+  isActive Boolean @default(true)
+
   // Mandatory for STUDENT and ADMIN, always null for SUPER_ADMIN (who has
   // access to every program instead of being scoped to one) - enforced by
   // the raw-SQL CHECK constraint added in this column's migration, the same
@@ -112,6 +129,16 @@ model User {
   // Weekly class schedule shown on the student dashboard.
   scheduleEntries ScheduleEntry[]
 
+  // Staff scope assignments (see src/lib/authz). Each only means something
+  // for its own role and is ignored for every other role.
+  lecturerAssignments LecturerAssignment[]
+  captainStudents     CaptainStudent[]  @relation("CaptainStudentCaptain")
+  assignedCaptains    CaptainStudent[]  @relation("CaptainStudentStudent")
+  captainCohorts      CohortCaptain[]
+  cohortMembership    CohortMember?
+  supervisedCaptains  CaptainSupervision[] @relation("SupervisionSenior")
+  supervisors         CaptainSupervision[] @relation("SupervisionCaptain")
+
   @@index([programId])
   @@map("users")
 }
@@ -128,6 +155,7 @@ model BugReport {
   student     User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
   description String
   status      BugReportStatus @default(OPEN)
+  priority    BugReportPriority @default(MEDIUM)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
@@ -159,6 +187,10 @@ enum StudentNoteKind {
   PROGRESS
   ISSUE
   MOTIVATION
+  ACADEMIC
+  COMMUNICATION
+  FOLLOW_UP
+  FEEDBACK
 }
 
 // One entry in a student's activity log: a comment, progress note, reported
@@ -178,6 +210,9 @@ model StudentNote {
   body      String
   motivationFrom Int?
   motivationTo   Int?
+  // Optional follow-up reminder attached to a note (captains, success managers).
+  followUpAt     DateTime?
+  followUpDoneAt DateTime?
   createdAt DateTime        @default(now())
 
   attachments StudentNoteAttachment[]
@@ -222,6 +257,8 @@ model Program {
 
   subjects Subject[]
   users    User[]
+  cohorts  Cohort[]
+  incoSubmissions IncoSubmission[]
 
   @@map("programs")
 }
@@ -251,6 +288,7 @@ model Subject {
   groups        Group[]
   studentGroups StudentSubjectGroup[]
   homeworks     Homework[]
+  lecturerAssignments LecturerAssignment[]
 
   @@unique([programId, name])
   @@index([programId])
@@ -266,6 +304,7 @@ model Group {
 
   studentMemberships StudentSubjectGroup[]
   quizTargets        QuizTargetGroup[]
+  lecturerAssignments LecturerAssignment[]
 
   @@unique([subjectId, name])
   @@index([subjectId])
@@ -541,11 +580,18 @@ model IncoSubmission {
 
   codeHash String @unique
 
+  // Program of the student who sent it, so a Success Manager sees only their
+  // program's messages. Never the student. Null on messages sent before this
+  // column existed - those stay Super Admin only.
+  programId String?
+  program   Program? @relation(fields: [programId], references: [id], onDelete: SetNull)
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   respondedAt DateTime?
 
   @@index([status])
+  @@index([programId])
   @@map("inco_submissions")
 }
 
@@ -724,4 +770,97 @@ model ScheduleEntry {
 
   @@index([studentId, sortOrder])
   @@map("schedule_entries")
+}
+
+// --- Staff scope assignments -------------------------------------------------
+
+// A Lecturer teaches a subject to one group (JavaScript - Group I). One row per
+// subject/group combination.
+model LecturerAssignment {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  groupId   String
+  group     Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, groupId])
+  @@index([groupId])
+  @@map("lecturer_assignments")
+}
+
+// A Junior Captain's individually assigned students.
+model CaptainStudent {
+  id        String   @id @default(cuid())
+  captainId String
+  captain   User     @relation("CaptainStudentCaptain", fields: [captainId], references: [id], onDelete: Cascade)
+  studentId String
+  student   User     @relation("CaptainStudentStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([captainId, studentId])
+  @@index([studentId])
+  @@map("captain_students")
+}
+
+// A cohort is a group of students that moves through a program together.
+// Deliberately separate from subject Groups: "Group I" of JavaScript and
+// "Group I" of TypeScript are different teaching groups, a cohort is not.
+model Cohort {
+  id        String   @id @default(cuid())
+  name      String
+  programId String
+  program   Program  @relation(fields: [programId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  members  CohortMember[]
+  captains CohortCaptain[]
+
+  @@unique([programId, name])
+  @@map("cohorts")
+}
+
+// A student is in at most one cohort.
+model CohortMember {
+  id        String   @id @default(cuid())
+  cohortId  String
+  cohort    Cohort   @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  studentId String   @unique
+  student   User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([cohortId])
+  @@map("cohort_members")
+}
+
+// The Middle Captain(s) responsible for a cohort.
+model CohortCaptain {
+  id        String   @id @default(cuid())
+  cohortId  String
+  cohort    Cohort   @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  captainId String
+  captain   User     @relation(fields: [captainId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([cohortId, captainId])
+  @@index([captainId])
+  @@map("cohort_captains")
+}
+
+// A Senior Captain supervises Junior and Middle Captains. Supervision grants
+// read access to those captains' students and activity - never account
+// administration.
+model CaptainSupervision {
+  id        String   @id @default(cuid())
+  seniorId  String
+  senior    User     @relation("SupervisionSenior", fields: [seniorId], references: [id], onDelete: Cascade)
+  captainId String
+  captain   User     @relation("SupervisionCaptain", fields: [captainId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([seniorId, captainId])
+  @@index([captainId])
+  @@map("captain_supervision")
 }

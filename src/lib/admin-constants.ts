@@ -1,3 +1,2 @@
-// Plain constant, not a server action - kept out of actions.ts because a
-// "use server" file may only export async functions.
-export const MAX_ADMINS = 8;
+// Obsolete since the Staff & Access rewrite (2026-11-11). Nothing imports this file - safe to delete.
+export {};

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getCurrentSuperAdmin } from "@/lib/session";
+import { getStaffWith } from "@/lib/staff-guard";
+import { incoScopeWhere } from "@/lib/scope";
 import { INCO_CATEGORY_LABELS, INCO_STATUS_LABELS } from "@/lib/inco-constants";
 import { updateIncoStatus, respondToInco } from "../actions";
 
@@ -11,7 +12,7 @@ export default async function IncoDetailPage({
   params,
   searchParams,
 }: PageProps<"/admin/inco/[id]">) {
-  const superAdmin = await getCurrentSuperAdmin();
+  const superAdmin = await getStaffWith("inco.view");
   if (!superAdmin) notFound();
 
   const { id } = await params;
@@ -19,7 +20,7 @@ export default async function IncoDetailPage({
   const justResponded = search?.responded === "1";
   const responseError = search?.error === "empty";
 
-  const submission = await prisma.incoSubmission.findUnique({ where: { id } });
+  const submission = await prisma.incoSubmission.findFirst({ where: { AND: [incoScopeWhere(superAdmin), { id }] } });
   if (!submission) notFound();
 
   const respond = respondToInco.bind(null, submission.id);

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getCurrentAdmin } from "@/lib/session";
+import { getStaffWith } from "@/lib/staff-guard";
+import { isFullAdmin } from "@/lib/authz";
+import { canManageQuiz } from "@/lib/scope";
 
 const STATUS_STYLES: Record<string, string> = {
   IN_PROGRESS: "badge-neutral",
@@ -12,7 +14,7 @@ const STATUS_STYLES: Record<string, string> = {
 export default async function QuizResultsPage({
   params,
 }: PageProps<"/admin/quizzes/[id]/results">) {
-  const admin = await getCurrentAdmin();
+  const admin = await getStaffWith("quizzes.manage");
   if (!admin) notFound();
 
   const { id } = await params;
@@ -29,7 +31,7 @@ export default async function QuizResultsPage({
     },
   });
   if (!quiz) notFound();
-  if (admin.role !== "SUPER_ADMIN" && quiz.subject?.programId !== admin.programId) notFound();
+  if (!(await canManageQuiz(admin, quiz.id))) notFound();
 
   return (
     <div>
@@ -60,7 +62,7 @@ export default async function QuizResultsPage({
               {quiz.quizAttempts.map((attempt) => (
                 <tr key={attempt.id} className="card">
                   <td className="px-3 py-3 font-semibold">
-                    <Link href={`/admin/students/${attempt.studentId}`} className="hover:text-rahoot-red hover:underline">
+                    <Link href={isFullAdmin(admin) ? `/admin/students/${attempt.studentId}` : `/admin/my-students/${attempt.studentId}`} className="hover:text-rahoot-red hover:underline">
                       {attempt.student.firstName} {attempt.student.lastName}
                     </Link>
                   </td>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
 import { useActionState, useState } from "react";
 import { submitIncoMessage, type SubmitIncoState } from "./actions";
 import { INCO_CATEGORIES, MAX_INCO_MESSAGE_LENGTH } from "@/lib/inco-constants";
@@ -41,7 +42,7 @@ export function IncoForm() {
     <form action={formAction} className="card flex flex-col gap-4 p-6">
       <label className="text-sm font-semibold">
         კატეგორია
-        <select name="category" required defaultValue="" className="input mt-1">
+        <Select name="category" required defaultValue="" className="input mt-1">
           <option value="" disabled>
             აირჩიეთ კატეგორია&hellip;
           </option>
@@ -50,7 +51,7 @@ export function IncoForm() {
               {c.label}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
       <label className="text-sm font-semibold">

@@ -1,7 +1,9 @@
+import { Select } from "@/components/ui/Select";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getCurrentAdmin } from "@/lib/session";
+import { getStaffWith } from "@/lib/staff-guard";
+import { canManageQuiz, scopeSubjectsForQuizzes } from "@/lib/scope";
 import {
   updateQuizDetails,
   updateQuizTargeting,
@@ -30,7 +32,7 @@ export default async function ManageQuizPage({
   params,
   searchParams,
 }: PageProps<"/admin/quizzes/[id]">) {
-  const admin = await getCurrentAdmin();
+  const admin = await getStaffWith("quizzes.manage");
   if (!admin) notFound();
 
   const { id } = await params;
@@ -48,12 +50,13 @@ export default async function ManageQuizPage({
     },
   });
   if (!quiz) notFound();
-  // Ownership check: a regular Admin may only manage a quiz belonging to
-  // their own program (via the quiz's subject) - hiding it from their list
-  // is not what makes this safe.
-  if (admin.role !== "SUPER_ADMIN" && quiz.subject?.programId !== admin.programId) notFound();
+  // Scope check (src/lib/scope.ts): hiding a quiz from a list is not what
+  // makes this safe - every role is checked against this one quiz here.
+  if (!(await canManageQuiz(admin, quiz.id))) notFound();
 
-  const subjects = quiz.subject ? await listSubjectsWithGroups(quiz.subject.programId) : [];
+  const subjects = quiz.subject
+    ? await scopeSubjectsForQuizzes(admin, await listSubjectsWithGroups(quiz.subject.programId))
+    : [];
 
   const updateDetails = updateQuizDetails.bind(null, quiz.id);
   const updateTargeting = updateQuizTargeting.bind(null, quiz.id);
@@ -222,7 +225,7 @@ export default async function ManageQuizPage({
           <form action={changeSubject} className="flex flex-col gap-3">
             <label className="sa-pg-field">
               Subject
-              <select name="subjectId" required defaultValue={quiz.subjectId ?? ""} className="sa-pg-input">
+              <Select name="subjectId" required defaultValue={quiz.subjectId ?? ""} className="sa-pg-input">
                 <option value="" disabled>
                   Choose a subject&hellip;
                 </option>
@@ -231,7 +234,7 @@ export default async function ManageQuizPage({
                     {sub.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <p className="text-xs text-rahoot-muted">Changing the subject clears the selected target groups.</p>
             <button type="submit" className="sa-qd-outline self-start">

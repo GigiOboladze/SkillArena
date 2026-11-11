@@ -3,14 +3,14 @@
 import { redirect, notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getCurrentAdmin } from "@/lib/session";
+import { getStaffWith } from "@/lib/staff-guard";
 import { generateUniqueHootPin } from "@/lib/hootarena/pin";
 import { loadHootGameForAdmin } from "@/lib/hootarena/access";
 import type { HootQuestionType, User } from "@/generated/prisma/client";
 
 async function requireAdmin(): Promise<User> {
-  const admin = await getCurrentAdmin();
-  if (!admin) redirect("/admin/login");
+  const admin = await getStaffWith("hoot.host");
+  if (!admin) redirect("/login");
   return admin;
 }
 

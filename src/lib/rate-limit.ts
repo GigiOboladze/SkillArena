@@ -130,7 +130,7 @@ export const LOGIN_BROWSER_WINDOW_MS = 10 * 60 * 1000;
 
 const AUTH_RATE_LIMIT_COOKIE = "auth_rl";
 
-export function loginAttemptKeyForUsername(scope: "admin" | "student", username: string): string {
+export function loginAttemptKeyForUsername(scope: "admin" | "student" | "account", username: string): string {
   return `login:${scope}:user:${username.trim().toLowerCase()}`;
 }
 

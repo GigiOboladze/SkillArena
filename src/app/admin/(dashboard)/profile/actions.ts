@@ -2,12 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getCurrentAdmin, createAdminSession, destroyAdminSession } from "@/lib/session";
+import { getCurrentStaff, createAdminSession, destroyAdminSession } from "@/lib/session";
 import { hashPassword } from "@/lib/password";
 
 async function requireAdmin() {
-  const admin = await getCurrentAdmin();
-  if (!admin) redirect("/admin/login");
+  const admin = await getCurrentStaff();
+  if (!admin) redirect("/login");
   return admin;
 }
 
@@ -53,5 +53,5 @@ export async function updateAdminPassword(formData: FormData) {
   // still make this safe, the change forces a fresh login on this session
   // immediately afterward rather than silently continuing on the old one.
   await destroyAdminSession();
-  redirect("/admin/login?passwordChanged=1");
+  redirect("/login?passwordChanged=1");
 }

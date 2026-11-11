@@ -110,9 +110,8 @@ export function AppSidebar({
       {/* Desktop sidebar */}
       <aside className="sa-sidebar" aria-label="Main navigation">
         <div className="sa-sidebar-inner">
-          <Link href={homeHref} className="flex items-center gap-2.5 px-2">
-            <Logo size={34} variant="mark" priority />
-            <span className="text-lg font-black tracking-tight text-rahoot-ink">SkillArena</span>
+          <Link href={homeHref} className="flex flex-col items-start gap-2 px-2" aria-label="SkillArena home">
+            <Logo size={38} priority />
             {areaLabel && <span className="sa-area-tag">{areaLabel}</span>}
           </Link>
 
@@ -156,9 +155,8 @@ export function AppSidebar({
       {/* Mobile / tablet top bar */}
       <header className={`sa-topbar ${bottomNav ? "has-bottomnav" : ""}`}>
         <div className="flex items-center justify-between gap-3 px-4 pt-3">
-          <Link href={homeHref} className="flex items-center gap-2">
-            <Logo size={28} variant="mark" priority />
-            <span className="font-black tracking-tight text-rahoot-ink">SkillArena</span>
+          <Link href={homeHref} className="flex min-w-0 items-center gap-2" aria-label="SkillArena home">
+            <Logo size={28} priority />
             {areaLabel && <span className="sa-area-tag">{areaLabel}</span>}
           </Link>
           <div className="flex items-center gap-2">

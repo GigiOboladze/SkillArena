@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { getCurrentAdmin } from "@/lib/session";
+import { getCurrentStaff } from "@/lib/session";
+import { ROLE_LABELS } from "@/lib/authz";
 import { updateAdminUsername, updateAdminPassword } from "./actions";
 import { IconShield, IconUser } from "@/components/student/Icons";
 import { PasswordInput } from "@/components/PasswordInput";
@@ -14,15 +15,15 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function AdminProfilePage({
   searchParams,
 }: PageProps<"/admin/profile">) {
-  const admin = await getCurrentAdmin();
-  if (!admin) redirect("/admin/login");
+  const admin = await getCurrentStaff();
+  if (!admin) redirect("/login");
 
   const search = await searchParams;
   const errorKey = typeof search?.error === "string" ? search.error : null;
   const error = errorKey ? ERROR_MESSAGES[errorKey] ?? null : null;
   const updated = search?.updated;
 
-  const roleLabel = admin.role === "SUPER_ADMIN" ? "Super Admin" : "Admin";
+  const roleLabel = ROLE_LABELS[admin.role];
 
   return (
     <div className="flex flex-col gap-10 lg:gap-14">

@@ -3,14 +3,18 @@
 import { redirect, notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getCurrentAdmin } from "@/lib/session";
+import { getStaffWith } from "@/lib/staff-guard";
+import { canManageQuiz, quizSubjectScope } from "@/lib/scope";
 import { generateJoinCode } from "@/lib/tokens";
 import { saveQuestionWithOptions } from "@/lib/question-options";
 import type { HomeworkStatus, User } from "@/generated/prisma/client";
 
+// Any staff role whose capabilities include quizzes.manage (Super Admin,
+// legacy Admin, Lecturer, Middle/Senior Captain). Which quizzes each may
+// touch is decided per quiz by requireQuizAccess -> canManageQuiz.
 async function requireAdmin(): Promise<User> {
-  const admin = await getCurrentAdmin();
-  if (!admin) redirect("/admin/login");
+  const admin = await getStaffWith("quizzes.manage");
+  if (!admin) redirect("/login");
   return admin;
 }
 
@@ -27,7 +31,7 @@ async function requireQuizAccess(admin: User, quizId: string) {
     include: { subject: true },
   });
   if (!quiz) notFound();
-  if (admin.role !== "SUPER_ADMIN" && quiz.subject?.programId !== admin.programId) notFound();
+  if (!(await canManageQuiz(admin, quiz.id))) notFound();
   return quiz;
 }
 
@@ -63,6 +67,11 @@ export async function createQuiz(programId: string, formData: FormData) {
   // created under - never trust the submitted subjectId alone.
   const subject = await prisma.subject.findFirst({ where: { id: subjectId, programId } });
   if (!subject) redirect(`/admin/quizzes/new?program=${programId}&error=subject`);
+  // A Lecturer may only create quizzes for a subject they teach.
+  const scope = await quizSubjectScope(admin);
+  if (scope.subjectIds && !scope.subjectIds.includes(subjectId)) {
+    redirect(`/admin/quizzes/new?program=${programId}&error=subject`);
+  }
 
   let joinCode = generateJoinCode();
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -97,7 +106,13 @@ export async function updateQuizTargeting(quizId: string, formData: FormData) {
   });
   if (!subject) redirect(`/admin/quizzes/${quizId}?error=subject`);
 
-  const validGroupIds = new Set(subject.groups.map((g) => g.id));
+  // A Lecturer may only target subjects and groups they teach.
+  const scope = await quizSubjectScope(admin);
+  if (scope.subjectIds && !scope.subjectIds.includes(subjectId)) redirect(`/admin/quizzes/${quizId}?error=subject`);
+  const allowedForSubject = scope.groupIdsBySubject?.get(subjectId);
+  const validGroupIds = new Set(
+    subject.groups.map((g) => g.id).filter((id) => !allowedForSubject || allowedForSubject.includes(id))
+  );
   const selectedGroupIds = formData
     .getAll("groupIds")
     .map(String)
@@ -168,11 +183,16 @@ function parseQuizQuestionForm(formData: FormData) {
   const text = String(formData.get("text") || "").trim();
   if (!text) return { error: "text" as const };
 
+  // 2-4 answers, posted as opt1..optN by position (the form lets the admin
+  // add/remove/reorder rows). Positions are contiguous, so the first empty
+  // field ends the list; any non-empty field after a gap is rejected.
   const correctIndex = Number(formData.get("correct"));
-  const options = [1, 2, 3, 4].map((i) => String(formData.get(`opt${i}`) || "").trim());
-
-  if (options.some((o) => o.length === 0)) return { error: "options" as const };
-  if (!(correctIndex >= 1 && correctIndex <= 4)) return { error: "correct" as const };
+  const raw = [1, 2, 3, 4].map((i) => String(formData.get(`opt${i}`) || "").trim());
+  const count = raw.findIndex((o) => o.length === 0);
+  const options = count === -1 ? raw : raw.slice(0, count);
+  if (count !== -1 && raw.slice(count).some((o) => o.length > 0)) return { error: "options" as const };
+  if (options.length < 2) return { error: "options" as const };
+  if (!(Number.isInteger(correctIndex) && correctIndex >= 1 && correctIndex <= options.length)) return { error: "correct" as const };
 
   return {
     text,

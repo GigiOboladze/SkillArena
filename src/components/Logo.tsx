@@ -1,19 +1,21 @@
 import Image from "next/image";
 
+// Official SkillArena brand assets (public/brand). All are transparent PNG
+// derivatives of the supplied logo - originals are kept untouched in
+// brand-source/. The supplied SVG only wraps the same raster image, so these
+// are not vector art and are sized for up to ~3x display density.
+//
+//  - skillarena-logo.png        full lockup, "Skill" white  -> dark theme
+//  - skillarena-logo-light.png  same lockup, "Skill" in deep ink -> light theme
+//                               (white text would be invisible on light)
+//  - skillarena-mark.png        the emblem alone
+const FULL_RATIO = 780 / 178;
+const MARK_RATIO = 282 / 237;
+
 /**
- * The SkillArena mark: the geometric icon (a color PNG, transparent - the
- * source wordmark asset had no alpha channel and baked-in dark background,
- * which is what produced the unwanted gray/black box around the logo; this
- * crop had its background removed) plus the wordmark rendered as real text,
- * not a raster image. That's deliberate, not a shortcut - the source
- * wordmark is white-on-black-only, so it would be invisible in light mode.
- * Real text stays sharp at any size and adopts the current theme's
- * foreground color automatically (or `currentColor` via className).
- *
- * - "full": icon + "SkillArena" text - use standalone, where nothing else
- *   already says the product name (login screens, homepage hero, pre-quiz).
- * - "mark": just the icon - use next to a separate text label in tight nav
- *   bars (the full lockup would otherwise duplicate the adjacent text).
+ * - "full": emblem + wordmark lockup. `size` is the rendered height in px.
+ * - "mark": emblem only, for tight spots next to a separate text label.
+ *   `size` is the rendered height in px.
  */
 export function Logo({
   size = 40,
@@ -26,30 +28,41 @@ export function Logo({
   className?: string;
   priority?: boolean;
 }) {
-  const icon = (
-    <Image
-      src="/brand/skillarena-mark.png"
-      alt={variant === "mark" ? "SkillArena" : ""}
-      width={size}
-      height={size}
-      priority={priority}
-      className="inline-block shrink-0"
-    />
-  );
-
   if (variant === "mark") {
-    return <span className={`inline-flex ${className}`}>{icon}</span>;
+    return (
+      <span className={`inline-flex ${className}`}>
+        <Image
+          src="/brand/skillarena-mark.png"
+          alt="SkillArena"
+          width={Math.round(size * MARK_RATIO)}
+          height={size}
+          priority={priority}
+          className="inline-block shrink-0"
+        />
+      </span>
+    );
   }
 
+  const width = Math.round(size * FULL_RATIO);
   return (
-    <span className={`inline-flex items-center gap-2.5 ${className}`}>
-      {icon}
-      <span
-        className="font-black uppercase leading-none tracking-tight text-foreground"
-        style={{ fontSize: size * 0.62 }}
-      >
-        SkillArena
-      </span>
+    <span className={`sa-logo inline-flex ${className}`} style={{ width, height: size }}>
+      <Image
+        src="/brand/skillarena-logo.png"
+        alt="SkillArena"
+        width={width}
+        height={size}
+        priority={priority}
+        className="sa-logo-on-dark"
+      />
+      <Image
+        src="/brand/skillarena-logo-light.png"
+        alt=""
+        aria-hidden
+        width={width}
+        height={size}
+        priority={priority}
+        className="sa-logo-on-light"
+      />
     </span>
   );
 }

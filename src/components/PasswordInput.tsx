@@ -4,6 +4,8 @@ import { useState } from "react";
 
 /** Password field with a show/hide (eye) toggle. Behaves exactly like a plain password input otherwise. */
 export function PasswordInput({
+  id,
+  ariaDescribedBy,
   name,
   className,
   minLength,
@@ -19,12 +21,16 @@ export function PasswordInput({
   autoComplete?: string;
   placeholder?: string;
   ariaLabel?: string;
+  id?: string;
+  ariaDescribedBy?: string;
 }) {
   const [visible, setVisible] = useState(false);
   return (
     <span className="relative block">
       <input
         type={visible ? "text" : "password"}
+        id={id}
+        aria-describedby={ariaDescribedBy}
         name={name}
         required={required}
         minLength={minLength}

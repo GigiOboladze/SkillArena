@@ -54,25 +54,13 @@ async function studentLogin(username, password) {
   return page;
 }
 
-async function createAdminViaUI(superAdminPage, username, password) {
-  await superAdminPage.goto(`${BASE}/admin/admins`, { waitUntil: "networkidle" });
-  // Scoped to the "Create admin" section specifically: once any regular
-  // admin already exists, the page also renders a per-row program-change
-  // select (AdminProgramForm), which collides with an unscoped
-  // select[name="programId"] locator.
-  const createSection = superAdminPage.locator('section:has-text("Create admin")');
-  await createSection.locator('input[name="username"]').fill(username);
-  await createSection.locator('input[name="password"]').fill(password);
-  await createSection.locator('input[name="confirmPassword"]').fill(password);
-  // The program select has no default value (its first option is a
-  // disabled placeholder) - it's a required field, so it must be chosen
-  // explicitly or the browser blocks submission entirely.
-  const firstProgramOption = await createSection.locator('select[name="programId"] option:not([value=""])').first().getAttribute("value");
-  await createSection.locator('select[name="programId"]').selectOption(firstProgramOption);
-  await Promise.all([
-    superAdminPage.waitForURL((u) => u.searchParams.get("created") === "1"),
-    createSection.getByRole("button", { name: "Create admin" }).click(),
-  ]);
+// Legacy ADMIN accounts can no longer be created through the UI (Staff &
+// Access only creates the new staff roles), so they are seeded directly.
+async function createAdminViaUI(_superAdminPage, username, password) {
+  const firstProgram = await prisma.program.findFirst({ orderBy: { order: "asc" } });
+  await prisma.user.create({
+    data: { firstName: "Admin", lastName: "", username, passwordHash: await hashPassword(password), role: "ADMIN", programId: firstProgram.id },
+  });
   createdAdminUsernames.push(username);
 }
 
@@ -92,12 +80,12 @@ async function run() {
   const regularAdmin = await adminLogin(regularAdminUsername, "adminpass123");
   ok("newly created regular admin can log in");
 
-  await regularAdmin.goto(`${BASE}/admin/admins`, { waitUntil: "networkidle" });
+  await regularAdmin.goto(`${BASE}/admin/team`, { waitUntil: "networkidle" });
   await assert(
     (await regularAdmin.locator("body").innerText()).includes("Not found"),
     "regular admin must be blocked (404) from the admin-management page, not just have the link hidden"
   );
-  ok("regular admin is blocked server-side from /admin/admins");
+  ok("regular admin is blocked server-side from Staff & Access");
 
   await regularAdmin.goto(`${BASE}/admin/quizzes`, { waitUntil: "networkidle" });
   await assert(
@@ -106,42 +94,28 @@ async function run() {
   );
   ok("regular admin retains normal admin functionality (quizzes, students, etc.)");
 
-  // ---------- Super Admin cannot be removed ----------
-  await superAdmin.goto(`${BASE}/admin/admins`, { waitUntil: "networkidle" });
-  // "Super Admin" (the role label) rather than the username substring, since
-  // a regular admin username like "e2e-admin-..." can itself contain "admin".
-  const superAdminRow = main(superAdmin).locator("li", { hasText: "Super Admin" });
-  // .innerText() reflects CSS text-transform: uppercase on the badge, so compare case-insensitively.
-  await assert(/protected/i.test(await superAdminRow.innerText()), "Super Admin row must show Protected, not a Remove button");
-  await assert((await superAdminRow.locator("button", { hasText: "Remove" }).count()) === 0, "Super Admin must not have a Remove button");
-  // The delete action's own query filters `role: "ADMIN"` (never SUPER_ADMIN), so it is
-  // structurally impossible for it to remove the Super Admin even given their id directly -
-  // confirmed by reading src/app/admin/(dashboard)/admins/actions.ts:deleteAdminAccount.
+  // ---------- Super Admin is protected in Staff & Access ----------
+  await superAdmin.goto(`${BASE}/admin/team?role=SUPER_ADMIN`, { waitUntil: "networkidle" });
+  const superAdminRow = main(superAdmin).locator(".sa-st-row:not(.is-head)", { hasText: "Super Admin" });
+  await assert(/protected/i.test(await superAdminRow.innerText()), "Super Admin row must show Protected, not a Manage link");
   const superAdminStillThere = await prisma.user.findUnique({ where: { username: SUPER_USERNAME.toLowerCase() } });
   await assert(superAdminStillThere?.role === "SUPER_ADMIN", "Super Admin row must still exist and be SUPER_ADMIN");
-  ok("Super Admin cannot be removed (no UI control, and the delete query structurally excludes SUPER_ADMIN)");
+  ok("Super Admin is protected (no manage control in Staff & Access)");
 
-  // ---------- Exactly 8 admin slots, enforced server-side ----------
+  // ---------- No admin cap: more than 8 legacy admins are fine ----------
+  // The old 8-slot limit was removed on purpose. Fill past it and confirm the
+  // directory still lists everyone and no capacity counter appears.
   let currentCount = await prisma.user.count({ where: { role: { in: ["ADMIN", "SUPER_ADMIN"] } } });
   let fillIndex = 0;
-  while (currentCount < 8) {
+  while (currentCount < 10) {
     await createAdminViaUI(superAdmin, `e2e-fill-${RUN_ID}-${fillIndex++}`, "adminpass123");
     currentCount = await prisma.user.count({ where: { role: { in: ["ADMIN", "SUPER_ADMIN"] } } });
   }
-  await assert(currentCount === 8, `expected exactly 8 admins after filling slots, got ${currentCount}`);
-  ok("filled all 8 admin slots");
-
-  await superAdmin.goto(`${BASE}/admin/admins`, { waitUntil: "networkidle" });
-  await assert((await main(superAdmin).innerText()).includes("8 / 8"), "expected the UI to show 8 / 8");
-  await assert((await main(superAdmin).locator('input[name="username"]').count()) === 0, "create-admin form must be hidden once full");
-  ok("UI shows 8 / 8 and hides the create-admin form once full");
-
-  // The route itself has no create form to submit at 8/8, but the server action
-  // (createAdminAccount) re-checks the count immediately before every insert
-  // regardless of UI state - confirmed by code inspection and by the invariant
-  // holding true here: the count never exceeds 8 no matter how many admins we
-  // just created through the real form.
-  ok("admin count is capped at 8 (server-side count check in createAdminAccount, not just a disabled button)");
+  await superAdmin.goto(`${BASE}/admin/team?role=ADMIN`, { waitUntil: "networkidle" });
+  const legacyRows = await main(superAdmin).locator(".sa-st-row:not(.is-head)").count();
+  await assert(legacyRows === currentCount - 1, `directory lists ${legacyRows} legacy admins, expected ${currentCount - 1}`);
+  await assert(!/\b\d+\s*\/\s*8\b/.test(await main(superAdmin).innerText()), "no 'N / 8' capacity counter may be shown");
+  ok("more than 8 admin-level accounts exist and are all listed - no cap");
 
   // ---------- Clean up the admins created for this test run ----------
   await prisma.user.deleteMany({ where: { role: "ADMIN", username: { in: createdAdminUsernames } } });
@@ -286,7 +260,7 @@ async function run() {
   // Unauthenticated access to the admin bug-report dashboard is blocked.
   const anon = await browser.newPage();
   await anon.goto(`${BASE}/admin/bug-reports`);
-  await assert(anon.url().includes("/admin/login"), "unauthenticated users must be redirected away from the admin bug-report dashboard");
+  await assert(anon.url().includes("/login"), "unauthenticated users must be redirected away from the admin bug-report dashboard");
   await anon.close();
   ok("unauthenticated access to the admin bug-report dashboard is blocked");
 
@@ -299,7 +273,10 @@ async function run() {
   await profileAdmin.goto(`${BASE}/admin/bug-reports`, { waitUntil: "networkidle" });
   const adminListText = await main(profileAdmin).innerText();
   await assert(adminListText.includes("mobile Safari"), "regular admin should see the submitted report");
-  await profileAdmin.getByRole("link", { name: "View Report" }).first().click();
+  await Promise.all([
+    profileAdmin.waitForURL(/\/admin\/bug-reports\/(?!new)[^/?]+$/),
+    profileAdmin.getByRole("link", { name: "View Report" }).first().click(),
+  ]);
   await profileAdmin.waitForLoadState("networkidle");
   await main(profileAdmin).locator('select[name="status"]').selectOption("IN_PROGRESS");
   await Promise.all([

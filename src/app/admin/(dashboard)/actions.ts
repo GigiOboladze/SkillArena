@@ -5,5 +5,5 @@ import { destroyAdminSession } from "@/lib/session";
 
 export async function logout() {
   await destroyAdminSession();
-  redirect("/admin/login");
+  redirect("/login");
 }

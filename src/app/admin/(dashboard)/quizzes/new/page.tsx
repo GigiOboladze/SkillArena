@@ -1,6 +1,8 @@
+import { Select } from "@/components/ui/Select";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCurrentAdmin } from "@/lib/session";
+import { getStaffWith } from "@/lib/staff-guard";
+import { scopeSubjectsForQuizzes } from "@/lib/scope";
 import { createQuiz } from "../actions";
 import { listSubjectsWithGroups } from "@/lib/subjects";
 import { resolveAdminProgramScope, listPrograms } from "@/lib/programs";
@@ -15,7 +17,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function NewQuizPage({
   searchParams,
 }: PageProps<"/admin/quizzes/new">) {
-  const admin = await getCurrentAdmin();
+  const admin = await getStaffWith("quizzes.manage");
   if (!admin) notFound();
 
   const search = await searchParams;
@@ -28,7 +30,7 @@ export default async function NewQuizPage({
   }
 
   const [subjects, programs] = await Promise.all([
-    listSubjectsWithGroups(programId),
+    listSubjectsWithGroups(programId).then((all) => scopeSubjectsForQuizzes(admin, all)),
     admin.role === "SUPER_ADMIN" ? listPrograms() : Promise.resolve([]),
   ]);
   const createQuizInProgram = createQuiz.bind(null, programId);
@@ -72,7 +74,7 @@ export default async function NewQuizPage({
             </label>
             <label className="sa-qn-label">
               Subject
-              <select name="subjectId" required defaultValue="" className="sa-qn-input">
+              <Select name="subjectId" required defaultValue="" className="sa-qn-input">
                 <option value="" disabled>
                   Choose a subject&hellip;
                 </option>
@@ -81,7 +83,7 @@ export default async function NewQuizPage({
                     {s.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           </div>
         </div>

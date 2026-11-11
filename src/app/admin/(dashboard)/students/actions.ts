@@ -15,7 +15,7 @@ import type { User } from "@/generated/prisma/client";
 
 async function requireAdmin() {
   const admin = await getCurrentAdmin();
-  if (!admin) redirect("/admin/login");
+  if (!admin) redirect("/login");
   return admin;
 }
 

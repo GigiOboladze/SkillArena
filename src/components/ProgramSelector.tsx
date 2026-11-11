@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 /**
  * Program switcher shown only to the Super Admin (a regular Admin is always
  * scoped to their own program - see resolveAdminProgramScope - and never
@@ -26,7 +28,7 @@ export function ProgramSelector({
     <form method="get" action={basePath} className="min-w-0 max-w-full">
       <label className="flex min-w-0 items-center gap-2 text-sm font-semibold">
         Program
-        <select
+        <Select
           name="program"
           defaultValue={currentProgramId}
           className="input !w-auto min-w-0 max-w-full !py-1.5"
@@ -37,7 +39,7 @@ export function ProgramSelector({
               {p.name}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
     </form>
   );

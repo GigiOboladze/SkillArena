@@ -1,17 +1,2 @@
-"use client";
-
-export function DeleteAdminButton({ username }: { username: string }) {
-  return (
-    <button
-      type="submit"
-      className="btn btn-outline !py-1.5 !px-3 text-sm"
-      onClick={(e) => {
-        if (!window.confirm(`Remove admin "${username}"?`)) {
-          e.preventDefault();
-        }
-      }}
-    >
-      Remove
-    </button>
-  );
-}
+// Obsolete since the Staff & Access rewrite (2026-11-11). Nothing imports this file - safe to delete.
+export {};

@@ -38,7 +38,7 @@ export default async function HomeworkLayout({
           <Link href="/my-homeworks" className="btn btn-outline">
             My homeworks
           </Link>
-          <Link href="/admin/login" className="text-sm text-rahoot-muted hover:text-rahoot-red">
+          <Link href="/login" className="text-sm text-rahoot-muted hover:text-rahoot-red">
             Admin login
           </Link>
         </div>

@@ -34,6 +34,11 @@ const SUITES = [
   ["student profiles", "e2e/student-profile.mjs"],
   ["dashboard schedule + news", "e2e/dashboard-schedule-news.mjs"],
   ["student my profile", "e2e/student-my-profile.mjs"],
+  ["admin bug reports page", "e2e/admin-bug-reports-page.mjs"],
+  ["staff roles + access", "e2e/staff-roles.mjs"],
+  ["dropdowns (every page, every role)", "e2e/dropdowns.mjs"],
+  ["admin hootarena list", "e2e/admin-hootarena-list.mjs"],
+  ["question forms", "e2e/question-forms.mjs"],
 ];
 
 function run(file) {

@@ -32,10 +32,14 @@ export function hashIncoCode(code: string): string {
   return createHash("sha256").update(code.trim()).digest("hex");
 }
 
-export async function createIncoSubmission(category: IncoCategory, message: string) {
+/**
+ * `programId` is the sender's program - the only thing recorded about who
+ * sent it, so the right Success Manager can read it. Never the student.
+ */
+export async function createIncoSubmission(category: IncoCategory, message: string, programId: string | null) {
   const code = generateIncoCode();
   const codeHash = hashIncoCode(code);
-  await prisma.incoSubmission.create({ data: { category, message, codeHash } });
+  await prisma.incoSubmission.create({ data: { category, message, codeHash, programId } });
   return code;
 }
 

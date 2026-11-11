@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getCurrentSuperAdmin } from "@/lib/session";
+import { getStaffWith } from "@/lib/staff-guard";
+import { incoScopeWhere } from "@/lib/scope";
 import { INCO_CATEGORY_LABELS, INCO_STATUS_LABELS } from "@/lib/inco-constants";
 
 const STATUS_CLASS: Record<string, string> = {
@@ -15,18 +16,19 @@ export default async function IncoInboxPage({
 }: PageProps<"/admin/inco">) {
   // Server-side enforcement, not just a hidden nav link - a regular admin
   // hitting this URL directly gets a 404, same as /admin/admins.
-  const superAdmin = await getCurrentSuperAdmin();
+  const superAdmin = await getStaffWith("inco.view");
   if (!superAdmin) notFound();
+  const scope = incoScopeWhere(superAdmin);
 
   const search = await searchParams;
   const statusFilter = typeof search?.status === "string" ? search.status : "";
 
   const [submissions, counts] = await Promise.all([
     prisma.incoSubmission.findMany({
-      where: statusFilter ? { status: statusFilter as "NEW" | "IN_PROGRESS" | "RESOLVED" } : undefined,
+      where: statusFilter ? { AND: [scope, { status: statusFilter as "NEW" | "IN_PROGRESS" | "RESOLVED" }] } : scope,
       orderBy: { createdAt: "desc" },
     }),
-    prisma.incoSubmission.groupBy({ by: ["status"], _count: { _all: true } }),
+    prisma.incoSubmission.groupBy({ by: ["status"], where: scope, _count: { _all: true } }),
   ]);
   const countByStatus = Object.fromEntries(counts.map((c) => [c.status, c._count._all]));
 

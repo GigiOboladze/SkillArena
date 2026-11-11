@@ -3,7 +3,8 @@
 import { redirect, notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getCurrentSuperAdmin } from "@/lib/session";
+import { getStaffWith } from "@/lib/staff-guard";
+import { incoScopeWhere } from "@/lib/scope";
 import type { IncoStatus } from "@/generated/prisma/client";
 
 // Every action here re-verifies Super Admin status itself, the same as
@@ -12,19 +13,22 @@ import type { IncoStatus } from "@/generated/prisma/client";
 // Admin must be rejected here even if they somehow reach this route or call
 // the action directly. This is the actual enforcement; the admin nav simply
 // not showing an "INCO" link to a regular Admin is not what makes this safe.
+// Super Admin (every message) or a Success Manager (their own program's
+// messages only, via incoScopeWhere). Each action re-checks the one message
+// against that scope - a message from another program is a 404.
 async function requireSuperAdmin() {
-  const superAdmin = await getCurrentSuperAdmin();
-  if (!superAdmin) redirect("/admin");
-  return superAdmin;
+  const staff = await getStaffWith("inco.view");
+  if (!staff) redirect("/admin");
+  return staff;
 }
 
 const VALID_STATUSES: IncoStatus[] = ["NEW", "IN_PROGRESS", "RESOLVED"];
 
 export async function updateIncoStatus(id: string, status: string) {
-  await requireSuperAdmin();
+  const staff = await requireSuperAdmin();
   if (!VALID_STATUSES.includes(status as IncoStatus)) return;
 
-  const submission = await prisma.incoSubmission.findUnique({ where: { id } });
+  const submission = await prisma.incoSubmission.findFirst({ where: { AND: [incoScopeWhere(staff), { id }] } });
   if (!submission) notFound();
 
   await prisma.incoSubmission.update({ where: { id }, data: { status: status as IncoStatus } });
@@ -33,9 +37,9 @@ export async function updateIncoStatus(id: string, status: string) {
 }
 
 export async function respondToInco(id: string, formData: FormData) {
-  await requireSuperAdmin();
+  const staff = await requireSuperAdmin();
 
-  const submission = await prisma.incoSubmission.findUnique({ where: { id } });
+  const submission = await prisma.incoSubmission.findFirst({ where: { AND: [incoScopeWhere(staff), { id }] } });
   if (!submission) notFound();
 
   const response = String(formData.get("response") || "").trim();

@@ -86,7 +86,7 @@ async function run() {
 
   // ---------- QR code + join link are shown on the management page ----------
   const managePageText = await main(admin).innerText();
-  await assert(managePageText.includes("Join code & QR"), "the management page should show a QR/join-link section");
+  await assert(managePageText.includes("Join the Game"), "the management page should show a QR/join-link section");
   const qrImage = await admin.locator('img[alt^="QR code to join"]').count();
   await assert(qrImage === 1, "expected a scannable QR code image on the management page");
   const pinBadge = await main(admin).locator("p.font-mono").innerText();
@@ -106,7 +106,7 @@ async function run() {
     text: "Which of these are JavaScript primitive types?",
     options: ["string", "number", "array", "object"],
     correct: [1, 2],
-    type: "Multiple Choice - one or more correct answers",
+    type: "Multiple Choice – one or more correct answers",
   });
   await admin.goto(`${BASE}/admin/hootarena/${gameId}/questions/new`, { waitUntil: "networkidle" });
   await admin.selectOption('select[name="type"]', { label: "True / False" });

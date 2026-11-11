@@ -53,7 +53,8 @@ async function run() {
   const anonCtx = await browser.newContext();
   const anonPage = await anonCtx.newPage();
   await anonPage.goto(`${BASE}/admin`);
-  await assert(anonPage.url().includes("/admin/login"), "expected redirect to /admin/login, got " + anonPage.url());
+  // One login for every role: the proxy sends anonymous visitors to /login.
+  await assert(new URL(anonPage.url()).pathname === "/login", "expected redirect to /login, got " + anonPage.url());
   ok("proxy blocks unauthenticated /admin access");
   await anonCtx.close();
 

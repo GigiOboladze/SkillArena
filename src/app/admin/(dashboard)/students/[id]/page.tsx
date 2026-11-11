@@ -1,3 +1,5 @@
+import { Select } from "@/components/ui/Select";
+import { NOTE_META } from "@/lib/note-meta";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -53,12 +55,6 @@ const PAGE_ERRORS: Record<string, string> = {
   schedulefull: `A schedule can have at most ${MAX_SCHEDULE_ENTRIES} classes.`,
 };
 
-const NOTE_META: Record<StudentNoteKind, { title: string; tone: string }> = {
-  MOTIVATION: { title: "Motivation updated", tone: "green" },
-  COMMENT: { title: "Comment", tone: "violet" },
-  PROGRESS: { title: "Progress", tone: "blue" },
-  ISSUE: { title: "Issue reported", tone: "amber" },
-};
 
 const TABS = [
   { key: "activity", label: "Activity Log" },
@@ -272,10 +268,10 @@ export default async function StudentProfilePage({ params, searchParams }: PageP
                       Note <span className="font-normal text-rahoot-muted">(optional, added to the log)</span>
                       <textarea name="note" rows={2} maxLength={2000} className="sa-pg-input !h-auto py-2" placeholder="Why did it change?" />
                     </label>
-                    <select name="as" className="sa-pg-input" aria-label="Post as" defaultValue="Admin">
+                    <Select name="as" className="sa-pg-input" aria-label="Post as" defaultValue="Admin">
                       <option value="Admin">Post as {admin.role === "SUPER_ADMIN" ? "Super Admin" : "Admin"}</option>
                       <option value="Lecturer">Post as Lecturer</option>
-                    </select>
+                    </Select>
                     <button type="submit" className="sa-qd-primary !h-11 justify-center">
                       Save motivation
                     </button>
@@ -481,15 +477,15 @@ export default async function StudentProfilePage({ params, searchParams }: PageP
                   <NoteImagePicker />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <select name="kind" className="sa-composer-select" aria-label="Type of update" defaultValue="COMMENT">
+                  <Select name="kind" className="sa-composer-select" aria-label="Type of update" defaultValue="COMMENT">
                     <option value="COMMENT">Comment</option>
                     <option value="PROGRESS">Progress</option>
                     <option value="ISSUE">Issue</option>
-                  </select>
-                  <select name="as" className="sa-composer-select" aria-label="Post as" defaultValue="Admin">
+                  </Select>
+                  <Select name="as" className="sa-composer-select" aria-label="Post as" defaultValue="Admin">
                     <option value="Admin">as {admin.role === "SUPER_ADMIN" ? "Super Admin" : "Admin"}</option>
                     <option value="Lecturer">as Lecturer</option>
-                  </select>
+                  </Select>
                   <button type="submit" className="sa-qd-primary !h-12 flex-1 justify-center sm:flex-none">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden>
                       <path d="M21 3 10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5 21 3Z" />

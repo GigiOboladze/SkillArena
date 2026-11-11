@@ -1,7 +1,9 @@
+import { Select } from "@/components/ui/Select";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getCurrentAdmin } from "@/lib/session";
+import { getStaffWith } from "@/lib/staff-guard";
+import { quizScopeWhere, scopeSubjectsForQuizzes } from "@/lib/scope";
 import { listSubjectsWithGroups } from "@/lib/subjects";
 import { resolveAdminProgramScope, listPrograms } from "@/lib/programs";
 import { ProgramSelector } from "@/components/ProgramSelector";
@@ -17,7 +19,7 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
 export default async function AdminQuizzesPage({
   searchParams,
 }: PageProps<"/admin/quizzes">) {
-  const admin = await getCurrentAdmin();
+  const admin = await getStaffWith("quizzes.manage");
   if (!admin) notFound();
 
   const search = await searchParams;
@@ -31,7 +33,11 @@ export default async function AdminQuizzesPage({
     return <p className="text-rahoot-muted">No programs exist yet - ask the Super Admin to create one.</p>;
   }
 
-  const where: Prisma.HomeworkWhereInput = { mode: "QUIZ", subject: { programId } };
+  // Program filter AND the role's own quiz scope (Lecturer: their subjects
+  // and groups; Captains: quizzes they created).
+  const scopeWhere = await quizScopeWhere(admin);
+  const baseWhere: Prisma.HomeworkWhereInput = { AND: [scopeWhere, { mode: "QUIZ", subject: { programId } }] };
+  const where: Prisma.HomeworkWhereInput = { ...baseWhere };
   if (q) where.title = { contains: q, mode: "insensitive" };
   if (subjectId) where.subjectId = subjectId;
   if (status) where.status = status as HomeworkStatus;
@@ -46,10 +52,10 @@ export default async function AdminQuizzesPage({
         _count: { select: { questions: true, quizAttempts: true } },
       },
     }),
-    listSubjectsWithGroups(programId),
+    listSubjectsWithGroups(programId).then((all) => scopeSubjectsForQuizzes(admin, all)),
     admin.role === "SUPER_ADMIN" ? listPrograms() : Promise.resolve([]),
     // Program-wide totals for the summary cards (independent of the filters below).
-    prisma.homework.groupBy({ by: ["status"], where: { mode: "QUIZ", subject: { programId } }, _count: { _all: true } }),
+    prisma.homework.groupBy({ by: ["status"], where: baseWhere, _count: { _all: true } }),
   ]);
   const countOf = (s: HomeworkStatus) => statusCounts.find((c) => c.status === s)?._count._all ?? 0;
   const totalCount = statusCounts.reduce((sum, c) => sum + c._count._all, 0);
@@ -112,20 +118,20 @@ export default async function AdminQuizzesPage({
           <span className="sr-only">Search by title</span>
           <input type="search" name="q" defaultValue={q} placeholder="Search by title&hellip;" />
         </label>
-        <select name="subject" defaultValue={subjectId} className="sa-qz-select sm:w-48">
+        <Select name="subject" defaultValue={subjectId} className="sa-qz-select sm:w-48">
           <option value="">All subjects</option>
           {subjects.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
             </option>
           ))}
-        </select>
-        <select name="status" defaultValue={status} className="sa-qz-select sm:w-44">
+        </Select>
+        <Select name="status" defaultValue={status} className="sa-qz-select sm:w-44">
           <option value="">All statuses</option>
           <option value="DRAFT">Draft</option>
           <option value="OPEN">Published</option>
           <option value="CLOSED">Unpublished</option>
-        </select>
+        </Select>
         <button type="submit" className="sa-qz-filter">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinejoin="round" aria-hidden className="h-5 w-5">
             <path d="M4 5h16l-6.2 7.4v5.1l-3.6 1.8v-6.9L4 5Z" />

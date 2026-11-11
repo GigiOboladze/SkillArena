@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getCurrentAdmin } from "@/lib/session";
+import { getStaffWith } from "@/lib/staff-guard";
 import { getCumulativeLeaderboard } from "@/lib/quiz";
 import { resolveAdminProgramScope, listPrograms } from "@/lib/programs";
 import { LeaderboardView } from "@/components/student/LeaderboardView";
@@ -8,7 +8,7 @@ import { ProgramSelector } from "@/components/ProgramSelector";
 export default async function AdminLeaderboardPage({
   searchParams,
 }: PageProps<"/admin/leaderboard">) {
-  const admin = await getCurrentAdmin();
+  const admin = await getStaffWith("leaderboard.view");
   if (!admin) notFound();
 
   const search = await searchParams;

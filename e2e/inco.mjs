@@ -5,6 +5,9 @@
 //   npm run test:e2e:inco
 import "dotenv/config";
 import { chromium } from "playwright";
+import { PrismaClient } from "../src/generated/prisma/client.ts";
+import { hashPassword } from "../src/lib/password.ts";
+const prisma = new PrismaClient();
 
 const BASE = process.env.SMOKE_BASE_URL || "http://localhost:3000";
 const SUPER_USERNAME = process.env.ADMIN_USERNAME || process.env.ADMIN_EMAIL;
@@ -38,26 +41,12 @@ async function run() {
 
   // ---------- A regular (non-super) admin must be blocked, server-side ----------
   const regularUsername = `e2e-inco-admin-${RUN_ID}`;
-  await superAdmin.goto(`${BASE}/admin/admins`, { waitUntil: "networkidle" });
-  // Scoped to the "Create admin" section: once any regular admin already
-  // exists, the page also renders a per-row program-change select
-  // (AdminProgramForm), which collides with an unscoped locator.
-  const createAdminSection = superAdmin.locator('section:has-text("Create admin")');
-  await createAdminSection.locator('input[name="username"]').fill(regularUsername);
-  await createAdminSection.locator('input[name="password"]').fill("adminpass123");
-  await createAdminSection.locator('input[name="confirmPassword"]').fill("adminpass123");
-  // The program select has no default value (its first option is a
-  // disabled placeholder) - required, so it must be chosen explicitly or
-  // the browser blocks submission entirely.
-  const incoFirstProgramValue = await createAdminSection
-    .locator('select[name="programId"] option:not([value=""])')
-    .first()
-    .getAttribute("value");
-  await createAdminSection.locator('select[name="programId"]').selectOption(incoFirstProgramValue);
-  await Promise.all([
-    superAdmin.waitForURL((u) => u.searchParams.get("created") === "1"),
-    createAdminSection.getByRole("button", { name: "Create admin" }).click(),
-  ]);
+  // Legacy ADMIN accounts can no longer be created through the UI (Staff &
+  // Access only creates the new roles), so this one is seeded directly.
+  const firstProgram = await prisma.program.findFirst({ orderBy: { order: "asc" } });
+  await prisma.user.create({
+    data: { firstName: "Admin", lastName: "", username: regularUsername, passwordHash: await hashPassword("adminpass123"), role: "ADMIN", programId: firstProgram.id },
+  });
   ok("created a throwaway regular admin");
 
   const regularAdmin = await browser.newPage();
@@ -78,12 +67,7 @@ async function run() {
   ok("regular admin is blocked server-side from /admin/inco (direct URL, not just hidden nav)");
   await regularAdmin.close();
 
-  // Clean up the throwaway admin so repeat runs don't pile up admin slots (max 8).
-  await superAdmin.goto(`${BASE}/admin/admins`, { waitUntil: "networkidle" });
-  const adminRow = main(superAdmin).locator("li", { hasText: regularUsername });
-  superAdmin.once("dialog", (d) => d.accept());
-  await adminRow.getByRole("button", { name: "Remove" }).click();
-  await superAdmin.waitForLoadState("networkidle");
+  await prisma.user.deleteMany({ where: { username: regularUsername, role: "ADMIN" } });
   ok("cleaned up the throwaway regular admin");
 
   // ---------- Anonymous submit -> code -> public status check ----------
@@ -180,4 +164,5 @@ run()
     // forever (nothing past the throw point ever calls browser.close()),
     // hanging this process indefinitely instead of exiting on failure.
     try { await browser.close(); } catch {}
+    await prisma.$disconnect();
   });

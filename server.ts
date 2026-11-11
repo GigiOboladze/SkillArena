@@ -18,6 +18,8 @@ import type {
 } from "./src/lib/socket-events";
 import { computeHootPoints, isSelectionCorrect, HOOT_QUESTION_SECONDS } from "./src/lib/hootarena/scoring";
 import { canAdminManageGame } from "./src/lib/hootarena/access";
+import { can } from "./src/lib/authz";
+import type { UserRole } from "./src/generated/prisma/enums";
 import type {
   HootClientToServerEvents,
   HootServerToClientEvents,
@@ -640,16 +642,18 @@ app.prepare().then(() => {
 
   async function verifyHootAdmin(
     socket: Socket
-  ): Promise<{ userId: string; role: "ADMIN" | "SUPER_ADMIN" } | null> {
+  ): Promise<{ userId: string; role: UserRole } | null> {
     const token = parseCookie(socket.handshake.headers.cookie, adminSessionCookieName());
     const envelope = token ? await verifySessionEnvelope(token) : {};
     const session = adminFromEnvelope(envelope);
     if (!session) return null;
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { role: true, sessionVersion: true },
+      select: { role: true, sessionVersion: true, isActive: true },
     });
-    if (!user || (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") || user.sessionVersion !== session.sv) {
+    // Any active staff role allowed to host HootArena (src/lib/authz.ts);
+    // which games each may control is still decided by loadHootGameForAdmin.
+    if (!user || !user.isActive || !can(user, "hoot.host") || user.sessionVersion !== session.sv) {
       return null;
     }
     return { userId: session.userId, role: user.role };

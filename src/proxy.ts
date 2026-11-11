@@ -26,7 +26,7 @@ export async function proxy(request: NextRequest) {
     const token = request.cookies.get(adminSessionCookieName())?.value;
     const session = token ? await verifyAdminToken(token) : null;
     if (!session) {
-      const loginUrl = new URL("/admin/login", request.nextUrl);
+      const loginUrl = new URL("/login", request.nextUrl);
       loginUrl.searchParams.set("from", pathname);
       return NextResponse.redirect(loginUrl);
     }

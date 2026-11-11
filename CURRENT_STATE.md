@@ -355,3 +355,29 @@ See the table above. `npm run lint` cannot currently serve as a CI gate.
 | Naming | `rahoot` package name, `--rahoot-red` variables holding purple |
 | Schema | `Question.points`/`timeLimitSec` defaults are legacy-only and misleading; one dead enum value |
 | Scalability | Single-instance ceiling is architectural (in-memory live state), not tunable |
+
+## Staff roles, unified login and Staff & Access (2026-11-11)
+
+- **One login** at `/login` for every account. The role is read from the database after the
+  password check; students land on `/dashboard`, every staff role on `/admin`. `/admin/login`
+  redirects to `/login`. Signing in replaces whatever session the browser had.
+- **Roles:** STUDENT, LECTURER, JUNIOR_CAPTAIN, MIDDLE_CAPTAIN, SENIOR_CAPTAIN, SUCCESS_MANAGER,
+  SUPER_ADMIN, plus the legacy program-scoped ADMIN (unchanged until the Super Admin reassigns it).
+- **Authorization:** `src/lib/authz.ts` (role -> capability, deny by default) and
+  `src/lib/scope.ts` (which students / quizzes / INCO rows a role reaches). Every non-Super-Admin
+  staff account is walled into its `programId`. `getCurrentAdmin()` still means Super Admin or
+  legacy Admin only, so older pages stay closed to the new roles; areas opened to them use
+  `getStaffWith(capability)` plus a scope check.
+- **Staff & Access** at `/admin/team` (Super Admin only): directory with search, role / program /
+  status filters and pagination; role-aware create and edit forms; deactivate / reactivate;
+  password reset. **No staff-count limit** (the old `MAX_ADMINS = 8` was removed).
+  Role, program, activation and password changes bump `sessionVersion`, ending live sessions.
+- **Cohorts** at `/admin/cohorts` (Super Admin): Middle Captains are assigned cohorts, which are
+  separate from subject groups.
+- **Workspaces:** scoped `/admin/my-students` (+ profile with append-only notes and follow-ups),
+  `/admin/supervision` for Senior Captains, program-scoped INCO for Success Managers (new
+  messages record the sender's program only - never the student).
+- **Migration:** `20261111090000_staff_roles_and_scopes` - additive and idempotent only.
+- **Branding:** `public/brand/*` are cleaned transparent PNG derivatives of the supplied logo;
+  the originals are kept untouched in `brand-source/`. The supplied SVG only wraps the PNG, so
+  there is no true vector version.

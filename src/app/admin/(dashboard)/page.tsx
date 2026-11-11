@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getCurrentAdmin } from "@/lib/session";
+import { getCurrentAdmin, getCurrentStaff } from "@/lib/session";
+import { StaffOverview } from "@/components/admin/StaffOverview";
 import { getCumulativeLeaderboard } from "@/lib/quiz";
 import { getProgram, resolveAdminProgramScope } from "@/lib/programs";
 import { requestNow, timeAgo } from "@/lib/time-ago";
@@ -10,8 +11,14 @@ import { AdminOverviewView } from "@/components/admin/AdminOverviewView";
 const WEEK_MS = 7 * 24 * 3600 * 1000;
 
 export default async function AdminOverviewPage() {
+  // The full admin overview is for Super Admin / legacy Admin. Every other
+  // staff role gets its own scoped workspace overview.
   const admin = await getCurrentAdmin();
-  if (!admin) notFound();
+  if (!admin) {
+    const staff = await getCurrentStaff();
+    if (!staff) notFound();
+    return <StaffOverview staff={staff} />;
+  }
 
   const isSuper = admin.role === "SUPER_ADMIN";
 

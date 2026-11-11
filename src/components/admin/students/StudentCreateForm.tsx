@@ -1,5 +1,6 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
 import { useState } from "react";
 import Link from "next/link";
 import { PasswordInput } from "@/components/PasswordInput";
@@ -93,7 +94,7 @@ export function StudentCreateForm({
               Program <em>*</em>
             </span>
             {canChooseProgram ? (
-              <select
+              <Select
                 name="programId"
                 value={programId}
                 onChange={(e) => setProgramId(e.target.value)}
@@ -104,7 +105,7 @@ export function StudentCreateForm({
                     {p.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             ) : (
               <>
                 <input type="hidden" name="programId" value={program?.id ?? ""} />

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCurrentAdmin } from "@/lib/session";
+import { getStaffWith } from "@/lib/staff-guard";
 import { createHootGame } from "../actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -10,7 +10,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function NewHootGamePage({
   searchParams,
 }: PageProps<"/admin/hootarena/new">) {
-  const admin = await getCurrentAdmin();
+  const admin = await getStaffWith("hoot.host");
   if (!admin) notFound();
 
   const search = await searchParams;

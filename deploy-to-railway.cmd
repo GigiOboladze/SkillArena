@@ -24,7 +24,7 @@ if errorlevel 1 (
 echo.
 echo  [1/3] Saving all changes...
 git add -A >> "%LOG%" 2>&1
-git -c user.name="Gigi Oboladze" -c user.email="gigi.oboladze99@gmail.com" commit -m "SkillArena update: student profiles and activity log, class schedule, news, new My Profile, dashboard redesign" >> "%LOG%" 2>&1
+git -c user.name="Gigi Oboladze" -c user.email="gigi.oboladze99@gmail.com" commit -m "SkillArena update %date% %time%" >> "%LOG%" 2>&1
 git log --oneline -1 >> "%LOG%" 2>&1
 
 echo  [2/3] Sending to GitHub (a GitHub sign-in window may pop up - sign in if it does)...

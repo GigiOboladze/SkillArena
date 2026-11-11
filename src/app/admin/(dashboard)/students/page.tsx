@@ -1,3 +1,4 @@
+import { Select } from "@/components/ui/Select";
 import Link from "next/link";
 import { parseHobbies } from "@/lib/hobbies";
 import { notFound } from "next/navigation";
@@ -181,31 +182,31 @@ export default async function AdminStudentsPage({ searchParams }: PageProps<"/ad
           <input type="search" name="q" defaultValue={q} placeholder="Search by name or username&hellip;" />
         </label>
         {admin.role === "SUPER_ADMIN" && programs.length > 1 ? (
-          <select name="program" defaultValue={programId} className="sa-qz-select" aria-label="Program">
+          <Select name="program" defaultValue={programId} className="sa-qz-select" aria-label="Program">
             {programs.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
             ))}
-          </select>
+          </Select>
         ) : (
           admin.role === "SUPER_ADMIN" && <input type="hidden" name="program" value={programId} />
         )}
-        <select name="subject" defaultValue={subjectId} className="sa-qz-select" aria-label="Subject">
+        <Select name="subject" defaultValue={subjectId} className="sa-qz-select" aria-label="Subject">
           <option value="">All subjects</option>
           {subjects.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
             </option>
           ))}
-        </select>
-        <select name="sort" defaultValue={sort} className="sa-qz-select" aria-label="Sort by">
+        </Select>
+        <Select name="sort" defaultValue={sort} className="sa-qz-select" aria-label="Sort by">
           {Object.entries(SORTS).map(([value, label]) => (
             <option key={value} value={value}>
               {label}
             </option>
           ))}
-        </select>
+        </Select>
         <button type="submit" className="sa-qz-filter">
           Apply
         </button>

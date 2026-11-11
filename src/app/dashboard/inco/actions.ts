@@ -38,6 +38,6 @@ export async function submitIncoMessage(_prev: SubmitIncoState, formData: FormDa
     return { error: `შეტყობინება ძალიან გრძელია (მაქსიმუმ ${MAX_INCO_MESSAGE_LENGTH} სიმბოლო).` };
   }
 
-  const code = await createIncoSubmission(category as IncoCategory, message);
+  const code = await createIncoSubmission(category as IncoCategory, message, student.programId);
   return { code };
 }
